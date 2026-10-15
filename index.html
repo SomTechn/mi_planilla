@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0A2A66">
 <title>Mi Planilla</title>
-<link rel="manifest" href="planilla.webmanifest">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="planilla.webmanifest?v=2">
+<link rel="icon" type="image/png" sizes="32x32" href="mi-planilla-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="mi-planilla-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="mi-planilla-180.png">
 <meta name="apple-mobile-web-app-title" content="Mi Planilla">
 <meta name="application-name" content="Mi Planilla">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1741,7 +1742,6 @@ async function vMisPagos() {
   const m = shell(`
     <div class="hola">${ult ? `<div class="k">Último pago · ${esc(ult.periodo?.nombre)}</div><div class="v">${L(ult.recibido)}</div><div class="s">${ult.adel > 0 ? `${L(ult.neto)} pagado el ${fl(ult.periodo?.fecha_pago || ult.periodo?.fecha_fin)} + ${L(ult.adel)} en adelantos, vales y préstamos` : `Pagado el ${fl(ult.periodo?.fecha_pago || ult.periodo?.fecha_fin)}`}</div>` : `<div class="k">Hola, ${esc(corto(S.yo.nombre))}</div><div class="v" style="font-size:22px">Aún no tienes comprobantes</div><div class="s">Aparecerán aquí cuando se cierre la planilla.</div>`}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px"><a class="btn borde" href="#/constancia">${ICON.doc}Constancia de trabajo</a>${S.yo.recibe_combustible ? `<a class="btn borde" href="#/mi-combustible">${ICON.moto}Odómetro</a>` : ''}</div>
-    ${S.yo.recibe_salario ? htmlDecimos(S.yo, { propio: true }) : ''}
     <h2 style="margin:18px 0 12px">Mis comprobantes</h2>
     <div id="lc"></div>
     ${extra.length ? `<h2 style="margin:24px 0 4px">Combustible y depreciación</h2><p class="small muted" style="margin:0 0 10px">Pagos aparte de la planilla</p>
@@ -2155,7 +2155,8 @@ function calcDecimos(sal, ingreso, hoyS = iso(hoyHN())) {
   const d14 = uno(iniC, finC, `junio ${finC.slice(0, 4)}`);
   return { d13, d14, sal };
 }
-function htmlDecimos(e, { propio = false } = {}) {
+// Solo administración: referencia interna, no se muestra al empleado
+function htmlDecimos(e) {
   if (!+e.salario_mensual) return '';
   const corte = e.fecha_baja && e.fecha_baja < iso(hoyHN()) ? e.fecha_baja : iso(hoyHN());
   const { d13, d14 } = calcDecimos(e.salario_mensual, e.fecha_ingreso, corte);
@@ -2164,8 +2165,8 @@ function htmlDecimos(e, { propio = false } = {}) {
     <div class="tiny muted">${d.dias} días del ${fc(d.ini)} ${aHoy} · ${L(e.salario_mensual)} × ${d.dias} ÷ 360</div>
     <div class="barra" style="margin-top:8px"><i style="width:${Math.min(100, d.dias / 360 * 100)}%"></i></div>
     <div class="tiny" style="margin-top:6px">${corte !== iso(hoyHN()) ? 'Se incluye en la liquidación' : `Se paga en ${d.pago}${d.dias < 360 ? ` · estimado al pagarse: ${L(d.completo)}` : ''}`}</div></div>`;
-  return `<div class="panel" style="margin-top:14px"><h3 style="margin-bottom:4px">${propio ? 'Tu décimo tercer y cuarto mes' : 'Décimo tercer y cuarto mes'} ${corte === iso(hoyHN()) ? 'a la fecha' : 'a la fecha de baja'}</h3>
-    <p class="tiny muted" style="margin:0 0 10px">Acumulado proporcional sobre el salario mensual ordinario. Es una referencia; el monto final se calcula en la planilla de pago.</p>
+  return `<div class="panel" style="margin-top:14px"><h3 style="margin-bottom:4px">Décimo tercer y cuarto mes ${corte === iso(hoyHN()) ? 'a la fecha' : 'a la fecha de baja'}</h3>
+    <p class="tiny muted" style="margin:0 0 10px"><span class="chip warn">Solo administración</span> Acumulado proporcional sobre el salario mensual ordinario. Es una referencia que el empleado no ve; el monto final se calcula en la planilla de pago.</p>
     <div class="dec-g">${card('Aguinaldo · décimo tercer mes (ene–dic)', d13)}${card('Catorceavo · décimo cuarto mes (jul–jun)', d14)}</div></div>`;
 }
 
