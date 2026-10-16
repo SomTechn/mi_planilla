@@ -3246,9 +3246,16 @@ async function vSolicitudes() {
 
 /* ===================== HISTORIAL DE SOLICITUDES: pestañas + calendario ===================== */
 const horaCorta = t => { if (!t) return ''; const [h, m] = String(t).split(':').map(Number); const ap = h >= 12 ? 'p. m.' : 'a. m.'; return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${ap}`; };
-const calcHoras = (ini, fin) => { if (!ini || !fin || ini === fin) return 0; const [a, b] = [ini, fin].map(t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; }); let d = b - a; if (d <= 0) d += 1440; return Math.round(d / 60 * 100) / 100; };
+// minutos dentro de la hora de almuerzo (Ajustes: almuerzo_inicio / almuerzo_fin, por defecto 12:00 a 1:00 p. m.); no cuentan como hora extra
+const aMin = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); };
+const almuerzoMin = (ini, fin) => {
+  const a = aMin(S.par?.almuerzo_inicio || '12:00'), b = aMin(S.par?.almuerzo_fin || '13:00'); if (b <= a || !ini || !fin || ini === fin) return 0;
+  const i = aMin(ini), f = aMin(fin), sol = (x, y) => Math.max(0, Math.min(y, b) - Math.max(x, a));
+  return f > i ? sol(i, f) : sol(i, 1440) + sol(0, f);
+};
+const calcHoras = (ini, fin) => { if (!ini || !fin || ini === fin) return 0; let d = aMin(fin) - aMin(ini); if (d <= 0) d += 1440; d -= almuerzoMin(ini, fin); return Math.max(0, Math.round(d / 60 * 100) / 100); };
 function vincularRango(f) {
-  const upd = () => { const n = calcHoras(f.inicio.value, f.fin.value); const el = $('[data-tot]', f); if (el) el.innerHTML = n ? `Total: <b>${N(n)} horas</b>${f.fin.value <= f.inicio.value ? ' (termina al día siguiente)' : ''}` : 'Escribe la hora en que empezaste y terminaste.'; };
+  const upd = () => { const n = calcHoras(f.inicio.value, f.fin.value); const el = $('[data-tot]', f); if (el) el.innerHTML = n ? `Total: <b>${N(n)} horas</b>${almuerzoMin(f.inicio.value, f.fin.value) ? ' (sin la hora de almuerzo)' : ''}${f.fin.value <= f.inicio.value ? ' (termina al día siguiente)' : ''}` : 'Escribe la hora en que empezaste y terminaste.'; };
   f.inicio.addEventListener('input', upd); f.fin.addEventListener('input', upd); upd();
 }
 const horasTxt = h => h.hora_inicio ? `${horaCorta(h.hora_inicio)} – ${horaCorta(h.hora_fin)} (${N(h.horas)} h)` : `${N(h.horas)} h`;
@@ -3510,7 +3517,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '42';
+const APP_VERSION = '43';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
