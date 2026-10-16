@@ -1769,6 +1769,7 @@ async function vAjustes() {
         <div><div class="small muted" style="margin-bottom:6px">Vista previa</div><div class="logo-prev" id="logoprev"></div></div>
         <div style="grid-column:1/-1;display:flex;justify-content:flex-end"><button class="btn pri">Guardar identidad</button></div></form>
       <p class="tiny muted" style="margin:12px 0 0">Mi Planilla es un sistema de ${DUENO_SISTEMA}.</p></div>
+    <div class="panel" style="margin-top:14px" id="pferiados"><div class="muted small">Cargando feriados…</div></div>
     <div class="panel" style="margin-top:14px"><h3 style="margin-bottom:4px">Accesos</h3>
       <p class="small muted" style="margin:0 0 10px">Pueden ver y editar todo: planillas, empleados, préstamos, adelantos y comprobantes de todos. El administrador principal del sistema siempre tiene este acceso. El <b>supervisor de asistencia</b> marca la asistencia de todos (faltas, llegadas tarde, horas extra), ve los marcajes y administra vacaciones, permisos y horas extra (no las suyas); no ve salarios, comprobantes ni préstamos. Solo aparecen empleados que ya tienen usuario.</p>
       ${conCuenta.length ? `<table class="t"><tbody>${conCuenta.map(e => `<tr><td><b>${esc(e.nombre)}</b><div class="tiny muted">${esc(e.usuario || '')}</div></td><td class="r">${e.user_id === S.user.id ? `<span class="chip ok">Tú</span>${aut.has(e.user_id) ? ' <span class="chip warn">Autoriza</span>' : ''}` : `<div style="display:flex;gap:14px;justify-content:flex-end;flex-wrap:wrap"><label class="chk"><input type="checkbox" data-adm="${e.user_id}" ${esAdm.has(e.user_id) ? 'checked' : ''}>Administrador</label><label class="chk"><input type="checkbox" data-aut="${e.user_id}" ${aut.has(e.user_id) ? 'checked' : ''} ${esAdm.has(e.user_id) ? '' : 'disabled'}>Autoriza adelantos especiales</label><label class="chk"><input type="checkbox" data-sup="${e.user_id}" ${sup.has(e.user_id) ? 'checked' : ''} ${esAdm.has(e.user_id) ? 'disabled title="Los administradores ya manejan la asistencia"' : ''}>Supervisor de asistencia</label></div>`}</td></tr>`).join('')}</tbody></table>` : '<p class="small muted">Ningún empleado tiene usuario todavía.</p>'}</div>
@@ -1791,6 +1792,7 @@ async function vAjustes() {
     $('form', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target); const row = { nombre: x.nombre.trim(), tipo: x.tipo, aplica: x.aplica, orden: +x.orden || 100, activo: !!x.activo }; try { if (c.id) await q(sb.from('pl_conceptos').update(row).eq('id', c.id)); else await q(sb.from('pl_conceptos').insert(row)); h.cerrar(); toast('Concepto guardado'); vAjustes(); } catch (er) { toast(errMsg(er), true); } };
   };
   $('#nuevo', m).onclick = () => edit(null);
+  gestionarFeriados($('#pferiados', m)).catch(er => { $('#pferiados', m).innerHTML = `<div class="small muted">${esc(errMsg(er))}</div>`; });
   $('#nparea', m).onclick = () => editarPlantilla(null, { area: '' }, vAjustes);
   $$('[data-pl]', m).forEach(tr => tr.onclick = () => editarPlantilla(plArea.find(x => x.id === tr.dataset.pl), {}, vAjustes));
   $$('tr[data-c]', m).forEach(tr => tr.onclick = () => edit(cs.find(c => c.id === tr.dataset.c)));
@@ -2289,8 +2291,8 @@ async function vEmpleadosSup() {
 }
 async function vEmpleadoSup(id) {
   cargando();
-  const [lista, banco, hxs, aj] = await Promise.all([q(sb.rpc('pl_lista_empleados')), q(sb.rpc('pl_banco_horas', { p_emp: id })),
-    q(sb.from('pl_horas_extra').select('*').eq('empleado_id', id).order('fecha', { ascending: false }).limit(60)), cargarAjustes(id)]);
+  const [lista, banco, hxs, aj, fers] = await Promise.all([q(sb.rpc('pl_lista_empleados')), q(sb.rpc('pl_banco_horas', { p_emp: id })),
+    q(sb.from('pl_horas_extra').select('*').eq('empleado_id', id).order('fecha', { ascending: false }).limit(60)), cargarAjustes(id), q(sb.rpc('pl_mis_feriados', { p_emp: id })).catch(() => [])]);
   const e = lista.find(x => x.id === id); if (!e) return shell('<div class="vacio">Empleado no encontrado</div>');
   const propio = id === S.yo?.id;
   const nombres = await nombresUsuarios(hxs.map(h => h.solicitado_por).concat(aj.map(a => a.creado_por)));
@@ -2298,6 +2300,7 @@ async function vEmpleadoSup(id) {
     <div class="top"><div><h1>${esc(e.nombre)}</h1><div class="muted small">${esc(e.cargo || 'Sin cargo')}${e.fecha_ingreso ? ` · ingreso ${fc(e.fecha_ingreso)}` : ''}</div></div>
       <div class="acc">${propio ? '' : `<button class="btn borde" id="ajh">± Ajustar saldo</button><button class="btn pri" id="agh">${ICON.mas}Agregar horas extra</button>`}</div></div>
     <h2 style="margin:6px 0 10px">Banco de horas</h2>${htmlBanco(banco)}${htmlAjustes(aj, nombres)}
+    ${fers.length ? `<h2 style="margin:22px 0 10px">Feriados</h2>${htmlFeriados(fers)}` : ''}
     <h2 style="margin:22px 0 10px">Historial de horas</h2>
     ${hxs.length ? `<div class="tscroll"><table class="t"><tbody>${hxs.map(h => `<tr><td>${fc(h.fecha)}<div class="tiny muted">${etiquetaHoras(h)}${h.hora_inicio ? ` · ${horaCorta(h.hora_inicio)} – ${horaCorta(h.hora_fin)}` : ''} · ${esc(h.motivo || '')}</div>
       <div class="tiny muted">${h.origen === 'supervision' ? 'Registrada por supervisión' : h.origen === 'marcaje' ? 'Según marcaje' : 'Registrada por el empleado'}${nombres[h.solicitado_por] ? ' · ' + esc(nombres[h.solicitado_por]) : ''} · ${fdt(h.solicitado_en)}</div></td>
@@ -2885,7 +2888,7 @@ function htmlBanco(b) {
 }
 const etiquetaHoras = h => h.tipo === 'descanso' ? 'Descanso compensatorio' : h.estado === 'aprobada' ? (h.destino === 'pagar' ? 'Horas extra · se pagan' : 'Horas extra · a descanso') : `Horas extra${h.preferencia ? ` · prefiere ${h.preferencia === 'pagar' ? 'pago' : 'descanso'}` : ''}`;
 async function vMiTiempo(tab) {
-  const tabs = [['vacaciones', 'Vacaciones'], ['permisos', 'Permisos'], ['horas', 'Horas extra']];
+  const tabs = [['vacaciones', 'Vacaciones'], ['permisos', 'Permisos'], ['horas', 'Horas extra'], ['feriados', 'Feriados']];
   if (!tabs.some(t => t[0] === tab)) tab = 'vacaciones';
   cargando();
   let cuerpo = '';
@@ -2899,13 +2902,61 @@ async function vMiTiempo(tab) {
     cuerpo = `<div class="totales" style="grid-template-columns:1fr 1fr"><div><div class="k">Con goce en ${anio}</div><div class="v">${N(ap.filter(p => p.goce).reduce((a, p) => a + +p.dias, 0))} días</div></div><div><div class="k">Sin goce en ${anio}</div><div class="v">${N(ap.filter(p => !p.goce).reduce((a, p) => a + +p.dias, 0))} días</div></div></div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin:20px 0 10px"><h2>Mis permisos</h2><a class="btn pri sm" href="#/solicitar/permiso">Solicitar permiso</a></div>
       ${mis.length ? `<div class="tscroll"><table class="t"><tbody>${mis.map(p => `<tr><td>${rangoPermiso(p)}<div class="tiny muted">${tipoPermiso(p)} · ${esc(p.motivo)}</div></td><td class="r">${chipEstado(p.estado)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vacio">Sin permisos.</div>'}`;
+  } else if (tab === 'feriados') {
+    const fs = await q(sb.rpc('pl_mis_feriados'));
+    const disp = fs.filter(f => f.estado === 'disponible').length;
+    cuerpo = `<div class="totales" style="grid-template-columns:1fr 1fr"><div class="neto"><div class="k">Feriados disponibles para tomar</div><div class="v">${disp}</div></div><div><div class="k">Tomados o solicitados</div><div class="v">${fs.filter(f => f.estado === 'tomado' || f.estado === 'solicitado').length}</div></div></div>
+      <p class="small muted" style="margin:12px 0">Son feriados autorizados por la empresa que puedes tomar como día libre pagado. Elige el día y tu jefe lo aprueba.</p>
+      ${htmlFeriados(fs, true)}`;
   } else {
     const [b, mis, aj] = await Promise.all([q(sb.rpc('pl_banco_horas')), q(sb.from('pl_horas_extra').select('*').eq('empleado_id', S.yo.id).order('fecha', { ascending: false }).limit(40)), cargarAjustes(S.yo.id)]);
     cuerpo = `${htmlBanco(b)}${htmlAjustes(aj)}<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:20px 0 10px;flex-wrap:wrap"><h2>Mis horas extra</h2><div style="display:flex;gap:6px"><a class="btn sm" href="#/solicitar/descanso">Pedir descanso</a><a class="btn pri sm" href="#/solicitar/horas">Registrar horas extra</a></div></div>
       ${mis.length ? `<div class="tscroll"><table class="t"><tbody>${mis.map(h => `<tr><td>${fc(h.fecha)}<div class="tiny muted">${etiquetaHoras(h)}${h.hora_inicio ? ` · ${horaCorta(h.hora_inicio)} – ${horaCorta(h.hora_fin)}` : ''} · ${esc(h.motivo)}</div></td><td class="r num">${h.tipo === 'descanso' ? '−' : '+'}${N(h.horas)} h</td><td class="r">${chipEstado(h.estado)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vacio">Sin horas extra registradas.</div>'}`;
   }
-  shell(`<div class="top"><div><h1>Mi tiempo</h1><div class="muted small">Vacaciones, permisos y horas extra</div></div>${S.yo.recibe_combustible ? `<div class="acc"><a class="btn borde" href="#/mi-combustible">${ICON.moto}Odómetro</a></div>` : ''}</div>
+  const mt = shell(`<div class="top"><div><h1>Mi tiempo</h1><div class="muted small">Vacaciones, permisos, horas extra y feriados</div></div>${S.yo.recibe_combustible ? `<div class="acc"><a class="btn borde" href="#/mi-combustible">${ICON.moto}Odómetro</a></div>` : ''}</div>
     <div class="tabs">${tabs.map(([k, t]) => `<a href="#/mi-tiempo/${k}" class="${k === tab ? 'on' : ''}">${t}</a>`).join('')}</div>${cuerpo}`);
+  $$('[data-fer]', mt).forEach(b => b.onclick = () => solicitarFeriado(b.dataset.fer, b.dataset.nom, b.dataset.vence));
+}
+const ESTADO_FER = { disponible: '<span class="chip ok">Disponible</span>', solicitado: '<span class="chip warn">Solicitado</span>', tomado: '<span class="chip gris">Tomado</span>', vencido: '<span class="chip red">Vencido</span>' };
+function htmlFeriados(fs, propio = false) {
+  if (!fs.length) return '<div class="vacio">No hay feriados autorizados por ahora</div>';
+  return `<div class="tscroll"><table class="t"><tbody>${fs.map(f => `<tr><td><b>${esc(f.nombre)}</b><div class="tiny muted">Feriado del ${fl(f.fecha)}${f.vence ? ` · tomar hasta el ${fc(f.vence)}` : ''}${f.tomado_el ? ` · ${f.estado === 'tomado' ? 'tomado' : 'pedido'} para el ${fl(f.tomado_el)}` : ''}</div></td>
+    <td class="r">${ESTADO_FER[f.estado] || ''}</td>${propio ? `<td class="r">${f.estado === 'disponible' ? `<button class="btn sm pri" data-fer="${f.id}" data-nom="${esc(f.nombre)}" data-vence="${f.vence || ''}">Solicitar</button>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>`;
+}
+function solicitarFeriado(id, nombre, vence) {
+  const h = hoja('Tomar feriado', `<form><p class="small" style="margin:0 0 10px"><b>${esc(nombre)}</b></p>
+    <label class="f">¿Qué día lo quieres tomar?<input class="inp" type="date" name="fecha" min="${addDias(iso(hoyHN()), -31)}" ${vence ? `max="${vence}"` : ''} required></label>
+    <label class="f">Nota (opcional)<input class="inp" name="nota" maxlength="150"></label>
+    <p class="tiny muted" style="margin:0">Es un día libre con goce de sueldo. Queda pendiente hasta que lo aprueben.</p>
+    <div class="pie"><button class="btn pri">Solicitar feriado</button></div></form>`);
+  $('form', h.el).onsubmit = async ev => {
+    ev.preventDefault(); const x = formData(ev.target); const b = $('button.pri', ev.target); b.disabled = true;
+    try { await q(sb.rpc('pl_solicitar_feriado', { p_feriado: id, p_fecha: x.fecha, p_nota: x.nota || null })); h.cerrar(); toast('Feriado solicitado'); vMiTiempo('feriados'); }
+    catch (er) { b.disabled = false; toast(errMsg(er), true); }
+  };
+}
+async function gestionarFeriados(cont) {
+  const fs = await q(sb.from('pl_feriados').select('*').order('fecha', { ascending: false }));
+  let usos = []; try { usos = await q(sb.from('pl_permisos').select('feriado_id,estado').not('feriado_id', 'is', null).in('estado', ['pendiente', 'aprobado'])); } catch (_) { }
+  const cuenta = (id, e) => usos.filter(u => u.feriado_id === id && u.estado === e).length;
+  cont.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px"><h3>Feriados para tomar</h3><button class="btn sm pri" id="nfer">${ICON.mas}Agregar feriado</button></div>
+    <p class="small muted" style="margin:0 0 10px">Feriados autorizados que los empleados pueden pedir como día libre pagado desde "Mi tiempo". Aplican a todos los que ya trabajaban en esa fecha.</p>
+    ${fs.length ? fs.map(f => `<div class="interr" style="${f.activo ? '' : 'opacity:.55'}"><div><div class="t">${esc(f.nombre)}</div><div class="small muted">${fl(f.fecha)}${f.vence ? ` · tomar hasta el ${fc(f.vence)}` : ''} · ${cuenta(f.id, 'aprobado')} tomados · ${cuenta(f.id, 'pendiente')} por aprobar</div></div>
+      <label class="sw" title="Activo"><input type="checkbox" data-fact="${f.id}" ${f.activo ? 'checked' : ''} aria-label="Activo"><i></i></label></div>`).join('') : '<div class="vacio">Sin feriados</div>'}`;
+  $('#nfer', cont).onclick = () => {
+    const h = hoja('Agregar feriado', `<form><label class="f">Nombre<input class="inp" name="nombre" required maxlength="80" placeholder="Ej.: Feriado Morazánico (viernes 9 de octubre)"></label>
+      <div class="row2"><label class="f">Fecha del feriado<input class="inp" type="date" name="fecha" required></label><label class="f">Tomar hasta (opcional)<input class="inp" type="date" name="vence"></label></div>
+      <div class="pie"><button class="btn pri">Guardar feriado</button></div></form>`);
+    $('form', h.el).onsubmit = async ev => {
+      ev.preventDefault(); const x = formData(ev.target);
+      if (x.vence && x.vence < x.fecha) return toast('"Tomar hasta" debe ser después del feriado', true);
+      try { await q(sb.from('pl_feriados').insert({ nombre: x.nombre.trim(), fecha: x.fecha, vence: x.vence || null })); h.cerrar(); toast('Feriado agregado'); gestionarFeriados(cont); } catch (er) { toast(errMsg(er), true); }
+    };
+  };
+  $$('[data-fact]', cont).forEach(ch => ch.onchange = async () => {
+    try { await q(sb.from('pl_feriados').update({ activo: ch.checked }).eq('id', ch.dataset.fact)); toast(ch.checked ? 'Feriado activado' : 'Feriado desactivado'); }
+    catch (er) { ch.checked = !ch.checked; toast(errMsg(er), true); }
+  });
 }
 
 async function vMisSolicitudes() {
@@ -3517,7 +3568,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '43';
+const APP_VERSION = '44';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
