@@ -1544,6 +1544,7 @@ async function vEmpleado(id) {
     q(sb.from('pl_comprobantes').select('*, pl_periodos(nombre,tipo,fecha_inicio)').eq('empleado_id', id).eq('anulado', false).order('generado_en', { ascending: false })),
     q(sb.from('pl_adelantos').select('*, pl_periodos(nombre)').eq('empleado_id', id).order('fecha', { ascending: false }).limit(20))]);
   const [vac, vmov, perms, banco, hxs, plants] = await Promise.all([q(sb.rpc('pl_vacaciones_resumen', { p_emp: id })), q(sb.from('pl_vacaciones').select('*').eq('empleado_id', id).order('solicitado_en', { ascending: false }).limit(20)), q(sb.from('pl_permisos').select('*').eq('empleado_id', id).order('desde', { ascending: false }).limit(15)), q(sb.rpc('pl_banco_horas', { p_emp: id })), q(sb.from('pl_horas_extra').select('*').eq('empleado_id', id).order('fecha', { ascending: false }).limit(15)), q(sb.from('pl_plantillas').select('*').order('aplica').order('orden'))]);
+  const ajustesE = await cargarAjustes(id), nombresAj = await nombresUsuarios(ajustesE.map(a => a.creado_por));
   const misPl = plantillasDe(e, 'comisiones', plants).concat(plantillasDe(e, 'salario', plants));
   const inactivas = plants.filter(p => p.empleado_id === id && !p.activo);
   const m = shell(`<div class="miga"><a href="#/empleados">Empleados</a></div>
@@ -1574,8 +1575,8 @@ async function vEmpleado(id) {
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px;flex-wrap:wrap"><h2>Vacaciones</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="vini">Saldo inicial</button><button class="btn sm" id="vaj">Ajuste</button><button class="btn sm pri" id="vreg">Registrar vacaciones</button></div></div>
     ${htmlResumenVac(vac)}
     ${vmov.length ? `<div class="tscroll" style="margin-top:10px"><table class="t"><tbody>${vmov.map(v => `<tr><td>${v.tipo === 'ajuste' ? 'Ajuste' : `${fc(v.desde)} al ${fc(v.hasta)}`}<div class="tiny muted">${esc(v.nota || v.respuesta || '')}</div></td><td>${chipEstado(v.estado)}</td><td class="r num">${+v.dias > 0 && v.tipo === 'ajuste' ? '+' : ''}${N(v.dias)} días</td></tr>`).join('')}</tbody></table></div>` : ''}
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px"><h2>Horas extra</h2><button class="btn sm pri" id="hreg">Registrar horas extra</button></div>
-    ${htmlBanco(banco)}
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px"><h2>Horas extra</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="hajus">± Ajustar saldo</button><button class="btn sm pri" id="hreg">Registrar horas extra</button></div></div>
+    ${htmlBanco(banco)}${htmlAjustes(ajustesE, nombresAj)}
     ${hxs.length ? `<div class="tscroll" style="margin-top:10px"><table class="t"><tbody>${hxs.map(h => `<tr><td>${fc(h.fecha)}<div class="tiny muted">${etiquetaHoras(h)}${h.hora_inicio ? ` · ${horaCorta(h.hora_inicio)} – ${horaCorta(h.hora_fin)}` : ''} · ${esc(h.motivo)}</div></td><td class="r num">${h.tipo === 'descanso' ? '−' : '+'}${N(h.horas)} h</td><td class="r">${chipEstado(h.estado)}</td></tr>`).join('')}</tbody></table></div>` : ''}
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px"><h2>Permisos</h2><button class="btn sm pri" id="preg">Registrar permiso</button></div>
     ${perms.length ? `<div class="tscroll"><table class="t"><tbody>${perms.map(p => `<tr><td>${rangoPermiso(p)}<div class="tiny muted">${esc(p.motivo)}</div></td><td class="small">${tipoPermiso(p)}</td><td class="r">${chipEstado(p.estado)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vacio">Sin permisos</div>'}
@@ -1598,6 +1599,7 @@ async function vEmpleado(id) {
   $('#vaj', m).onclick = () => vacAjuste(id, () => rec());
   $('#nplant', m).onclick = () => editarPlantilla(null, { empleado_id: id }, rec);
   $$('[data-pl]', m).forEach(tr => tr.onclick = () => { const p = plants.find(x => x.id === tr.dataset.pl); if (!p.empleado_id) return toast('Es un cálculo del área; se edita en Ajustes'); editarPlantilla(p, {}, rec); });
+  $('#hajus', m).onclick = () => ajustarHoras({ empleados: [{ id: e.id, nombre: e.nombre }], empId: e.id, despues: () => vEmpleado(id) });
   $('#hreg', m).onclick = () => {
     const h = hoja('Registrar horas extra', `<form><label class="f">Fecha<input class="inp" type="date" name="fecha" value="${iso(hoyHN())}" required></label>
       <div class="row2"><label class="f">Hora de inicio<input class="inp" type="time" name="inicio" required></label><label class="f">Hora de fin<input class="inp" type="time" name="fin" required></label></div><div class="small muted" data-tot>Escribe la hora en que empezaste y terminaste.</div>
@@ -2267,7 +2269,7 @@ async function vEmpleadosSup() {
   const filas = await q(sb.rpc('pl_saldos_horas'));
   const tot = filas.reduce((a, r) => a + +r.disponible, 0);
   const m = shell(`<div class="top"><div><h1>Empleados</h1><div class="muted small">${filas.length} activos · saldo de horas para descanso</div></div>
-      <div class="acc"><button class="btn pri" id="agh">${ICON.mas}Agregar horas extra</button></div></div>
+      <div class="acc"><button class="btn borde" id="ajh">± Ajustar saldo</button><button class="btn pri" id="agh">${ICON.mas}Agregar horas extra</button></div></div>
     <div class="totales" style="grid-template-columns:repeat(2,1fr);margin-bottom:14px"><div class="neto"><div class="k">Horas de descanso disponibles (todos)</div><div class="v">${N(tot)}</div></div>
       <div><div class="k">Horas extra por aprobar</div><div class="v">${N(filas.reduce((a, r) => a + +r.extra_pendiente, 0))}</div></div></div>
     <div class="lista sup-movil">${filas.map(r => `<a class="item" href="#/empleado/${r.id}"><div class="grow"><div class="t">${esc(r.nombre)}</div><div class="s">${esc(r.cargo || '')}${+r.extra_pendiente ? ` · ${N(r.extra_pendiente)} h por aprobar` : ''}</div></div>
@@ -2278,28 +2280,68 @@ async function vEmpleadosSup() {
         <td class="r num"><b style="color:${+r.disponible > 0 ? 'var(--verde,#0E8A5F)' : 'inherit'}">${N(r.disponible)} h</b></td><td class="r num">${N(r.ganadas)}</td><td class="r num">${N(r.usadas)}</td>
         <td class="r num">${+r.extra_pendiente || +r.descanso_pendiente ? `${+r.extra_pendiente ? `+${N(r.extra_pendiente)}` : ''}${+r.descanso_pendiente ? ` −${N(r.descanso_pendiente)}` : ''} h` : '—'}</td>
         <td class="r">${r.id === S.yo?.id ? '<span class="chip gris">Tú</span>' : `<button class="btn sm" data-add="${r.id}">${ICON.mas}Horas</button>`}</td></tr>`).join('')}</tbody></table></div></div>
-    <p class="tiny muted" style="margin-top:10px">Disponible = horas ganadas para descanso menos las usadas y las solicitadas. Las horas extra que registras aquí quedan aprobadas.</p>`);
+    <p class="tiny muted" style="margin-top:10px">Disponible = horas ganadas para descanso (con los ajustes) menos las usadas y las solicitadas. Las horas extra y los ajustes que registras aquí quedan aprobados.</p>`);
   const lista = filas.filter(r => r.id !== S.yo?.id);
   $('#agh', m).onclick = () => agregarHorasSup({ empleados: lista, despues: vEmpleadosSup });
+  $('#ajh', m).onclick = () => ajustarHoras({ empleados: lista, despues: vEmpleadosSup });
   $$('[data-add]', m).forEach(b => b.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); agregarHorasSup({ empleados: lista, empId: b.dataset.add, despues: vEmpleadosSup }); });
   $$('tr[data-e]', m).forEach(tr => tr.onclick = () => location.hash = '#/empleado/' + tr.dataset.e);
 }
 async function vEmpleadoSup(id) {
   cargando();
-  const [lista, banco, hxs] = await Promise.all([q(sb.rpc('pl_lista_empleados')), q(sb.rpc('pl_banco_horas', { p_emp: id })),
-    q(sb.from('pl_horas_extra').select('*').eq('empleado_id', id).order('fecha', { ascending: false }).limit(60))]);
+  const [lista, banco, hxs, aj] = await Promise.all([q(sb.rpc('pl_lista_empleados')), q(sb.rpc('pl_banco_horas', { p_emp: id })),
+    q(sb.from('pl_horas_extra').select('*').eq('empleado_id', id).order('fecha', { ascending: false }).limit(60)), cargarAjustes(id)]);
   const e = lista.find(x => x.id === id); if (!e) return shell('<div class="vacio">Empleado no encontrado</div>');
   const propio = id === S.yo?.id;
-  const nombres = await nombresUsuarios(hxs.map(h => h.solicitado_por));
+  const nombres = await nombresUsuarios(hxs.map(h => h.solicitado_por).concat(aj.map(a => a.creado_por)));
   const m = shell(`<div class="miga"><a href="#/empleados">Empleados</a></div>
     <div class="top"><div><h1>${esc(e.nombre)}</h1><div class="muted small">${esc(e.cargo || 'Sin cargo')}${e.fecha_ingreso ? ` · ingreso ${fc(e.fecha_ingreso)}` : ''}</div></div>
-      <div class="acc">${propio ? '' : `<button class="btn pri" id="agh">${ICON.mas}Agregar horas extra</button>`}</div></div>
-    <h2 style="margin:6px 0 10px">Banco de horas</h2>${htmlBanco(banco)}
+      <div class="acc">${propio ? '' : `<button class="btn borde" id="ajh">± Ajustar saldo</button><button class="btn pri" id="agh">${ICON.mas}Agregar horas extra</button>`}</div></div>
+    <h2 style="margin:6px 0 10px">Banco de horas</h2>${htmlBanco(banco)}${htmlAjustes(aj, nombres)}
     <h2 style="margin:22px 0 10px">Historial de horas</h2>
     ${hxs.length ? `<div class="tscroll"><table class="t"><tbody>${hxs.map(h => `<tr><td>${fc(h.fecha)}<div class="tiny muted">${etiquetaHoras(h)}${h.hora_inicio ? ` · ${horaCorta(h.hora_inicio)} – ${horaCorta(h.hora_fin)}` : ''} · ${esc(h.motivo || '')}</div>
       <div class="tiny muted">${h.origen === 'supervision' ? 'Registrada por supervisión' : h.origen === 'marcaje' ? 'Según marcaje' : 'Registrada por el empleado'}${nombres[h.solicitado_por] ? ' · ' + esc(nombres[h.solicitado_por]) : ''} · ${fdt(h.solicitado_en)}</div></td>
       <td class="r num">${h.tipo === 'descanso' ? '−' : '+'}${N(h.horas)} h</td><td class="r">${chipEstado(h.estado)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vacio">Sin horas registradas</div>'}`);
   $('#agh', m) && ($('#agh', m).onclick = () => agregarHorasSup({ empleados: [{ id: e.id, nombre: e.nombre }], empId: e.id, despues: () => vEmpleadoSup(id) }));
+  $('#ajh', m) && ($('#ajh', m).onclick = () => ajustarHoras({ empleados: [{ id: e.id, nombre: e.nombre }], empId: e.id, despues: () => vEmpleadoSup(id) }));
+}
+
+// Ajustes manuales del saldo de horas (suman o restan), visibles para el empleado y la supervisión
+async function cargarAjustes(empId) { try { return await q(sb.from('pl_horas_ajustes').select('*').eq('empleado_id', empId).order('creado_en', { ascending: false }).limit(40)); } catch (_) { return []; } }
+function htmlAjustes(aj, nombres = {}) {
+  if (!aj.length) return '';
+  return `<h3 style="margin:18px 0 8px">Ajustes de saldo</h3><div class="tscroll"><table class="t"><tbody>${aj.map(a => `<tr><td>${fc(String(a.creado_en).slice(0, 10))}<div class="tiny muted">${esc(a.motivo)}</div>
+    <div class="tiny muted">${nombres[a.creado_por] ? 'Por ' + esc(nombres[a.creado_por]) + ' · ' : ''}${fdt(a.creado_en)}${a.saldo_antes != null ? ` · saldo antes ${N(a.saldo_antes)} h` : ''}</div></td>
+    <td class="r num"><b style="color:${+a.horas > 0 ? 'var(--verde,#0E8A5F)' : 'var(--rojo,#C62828)'}">${+a.horas > 0 ? '+' : '−'}${N(Math.abs(a.horas))} h</b></td></tr>`).join('')}</tbody></table></div>`;
+}
+async function ajustarHoras({ empleados, empId = '', despues }) {
+  const h = hoja('Ajustar saldo de horas', `<form id="fah">
+    <label class="f">Empleado<select class="inp" name="emp" required>${empleados.length > 1 ? '<option value="">Elige un empleado</option>' : ''}${empleados.map(x => `<option value="${x.id}" ${x.id === empId ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></label>
+    <div class="small" data-saldo style="min-height:20px"></div>
+    <div class="segm"><button type="button" class="on" data-v="1">Sumar horas</button><button type="button" data-v="-1">Restar horas</button></div><input type="hidden" name="signo" value="1">
+    <label class="f">Cantidad de horas<input class="inp" type="number" name="horas" min="0.25" max="500" step="0.25" inputmode="decimal" required placeholder="Ej.: 2 o 1.5"></label>
+    <label class="f">Motivo<input class="inp" name="motivo" required maxlength="200" placeholder="Ej.: corrección de registro, saldo de meses anteriores"></label>
+    <div class="small muted" data-nuevo></div>
+    <div class="pie"><button class="btn pri">Guardar ajuste</button></div></form>`);
+  const f = $('#fah', h.el); let saldo = null;
+  const pintar = () => {
+    const n = (+f.horas.value || 0) * +f.signo.value;
+    $('[data-nuevo]', f).innerHTML = saldo != null && n ? `Saldo nuevo: <b>${N(saldo + n)} h</b>${saldo + n < 0 ? ' <span class="chip red">no puede quedar en negativo</span>' : ''}` : '';
+  };
+  const cargarSaldo = async () => {
+    saldo = null; $('[data-saldo]', f).textContent = ''; pintar(); if (!f.emp.value) return;
+    try { const b = await q(sb.rpc('pl_banco_horas', { p_emp: f.emp.value })); saldo = +b.saldo; $('[data-saldo]', f).innerHTML = `Saldo actual: <b>${N(b.saldo)} h</b>${+b.descanso_pendiente ? ` · ${N(b.descanso_pendiente)} h de descanso por aprobar` : ''}`; pintar(); } catch (_) { }
+  };
+  $$('.segm button', f).forEach(b => b.onclick = () => { $$('.segm button', f).forEach(x => x.classList.toggle('on', x === b)); f.signo.value = b.dataset.v; pintar(); });
+  f.emp.onchange = cargarSaldo; f.horas.oninput = pintar; cargarSaldo();
+  f.onsubmit = async ev => {
+    ev.preventDefault(); const x = formData(f);
+    if (!x.emp) return toast('Elige un empleado', true);
+    const n = Math.round((+x.horas || 0) * 100) / 100 * +x.signo; if (!n) return toast('Escribe la cantidad de horas', true);
+    const b = $('button.pri', f); b.disabled = true;
+    try { const r = await q(sb.rpc('pl_ajustar_horas', { p_emp: x.emp, p_horas: n, p_motivo: x.motivo })); h.cerrar(); toast(`Ajuste guardado · saldo ${N(r.saldo)} h`); despues && despues(); }
+    catch (er) { b.disabled = false; toast(errMsg(er), true); }
+  };
 }
 async function nombresUsuarios(ids) {
   ids = [...new Set(ids.filter(Boolean))]; if (!ids.length) return {};
@@ -2838,7 +2880,7 @@ function resolverPermiso(p, aprobar, despues) {
 /* ===================== MI TIEMPO / MIS SOLICITUDES ===================== */
 function htmlBanco(b) {
   return `<div class="totales" style="grid-template-columns:repeat(3,1fr)"><div class="neto"><div class="k">Horas de descanso disponibles</div><div class="v">${N(b.disponible)}</div></div>
-    <div><div class="k">Horas ganadas para descanso</div><div class="v">${N(b.ganadas)}</div><div class="tiny muted">usadas ${N(b.usadas)}${+b.descanso_pendiente ? ` · ${N(b.descanso_pendiente)} por aprobar` : ''}</div></div>
+    <div><div class="k">Horas ganadas para descanso</div><div class="v">${N(b.ganadas)}</div><div class="tiny muted">usadas ${N(b.usadas)}${+b.descanso_pendiente ? ` · ${N(b.descanso_pendiente)} por aprobar` : ''}${+b.ajustes ? ` · incluye ajustes ${+b.ajustes > 0 ? '+' : '−'}${N(Math.abs(b.ajustes))}` : ''}</div></div>
     <div><div class="k">Horas extra pagadas</div><div class="v">${N(b.pagadas)}</div>${+b.extra_pendiente ? `<div class="tiny muted">${N(b.extra_pendiente)} h por aprobar</div>` : ''}</div></div>`;
 }
 const etiquetaHoras = h => h.tipo === 'descanso' ? 'Descanso compensatorio' : h.estado === 'aprobada' ? (h.destino === 'pagar' ? 'Horas extra · se pagan' : 'Horas extra · a descanso') : `Horas extra${h.preferencia ? ` · prefiere ${h.preferencia === 'pagar' ? 'pago' : 'descanso'}` : ''}`;
@@ -2858,8 +2900,8 @@ async function vMiTiempo(tab) {
       <div style="display:flex;justify-content:space-between;align-items:center;margin:20px 0 10px"><h2>Mis permisos</h2><a class="btn pri sm" href="#/solicitar/permiso">Solicitar permiso</a></div>
       ${mis.length ? `<div class="tscroll"><table class="t"><tbody>${mis.map(p => `<tr><td>${rangoPermiso(p)}<div class="tiny muted">${tipoPermiso(p)} · ${esc(p.motivo)}</div></td><td class="r">${chipEstado(p.estado)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vacio">Sin permisos.</div>'}`;
   } else {
-    const [b, mis] = await Promise.all([q(sb.rpc('pl_banco_horas')), q(sb.from('pl_horas_extra').select('*').eq('empleado_id', S.yo.id).order('fecha', { ascending: false }).limit(40))]);
-    cuerpo = `${htmlBanco(b)}<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:20px 0 10px;flex-wrap:wrap"><h2>Mis horas extra</h2><div style="display:flex;gap:6px"><a class="btn sm" href="#/solicitar/descanso">Pedir descanso</a><a class="btn pri sm" href="#/solicitar/horas">Registrar horas extra</a></div></div>
+    const [b, mis, aj] = await Promise.all([q(sb.rpc('pl_banco_horas')), q(sb.from('pl_horas_extra').select('*').eq('empleado_id', S.yo.id).order('fecha', { ascending: false }).limit(40)), cargarAjustes(S.yo.id)]);
+    cuerpo = `${htmlBanco(b)}${htmlAjustes(aj)}<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:20px 0 10px;flex-wrap:wrap"><h2>Mis horas extra</h2><div style="display:flex;gap:6px"><a class="btn sm" href="#/solicitar/descanso">Pedir descanso</a><a class="btn pri sm" href="#/solicitar/horas">Registrar horas extra</a></div></div>
       ${mis.length ? `<div class="tscroll"><table class="t"><tbody>${mis.map(h => `<tr><td>${fc(h.fecha)}<div class="tiny muted">${etiquetaHoras(h)}${h.hora_inicio ? ` · ${horaCorta(h.hora_inicio)} – ${horaCorta(h.hora_fin)}` : ''} · ${esc(h.motivo)}</div></td><td class="r num">${h.tipo === 'descanso' ? '−' : '+'}${N(h.horas)} h</td><td class="r">${chipEstado(h.estado)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vacio">Sin horas extra registradas.</div>'}`;
   }
   shell(`<div class="top"><div><h1>Mi tiempo</h1><div class="muted small">Vacaciones, permisos y horas extra</div></div>${S.yo.recibe_combustible ? `<div class="acc"><a class="btn borde" href="#/mi-combustible">${ICON.moto}Odómetro</a></div>` : ''}</div>
@@ -3468,7 +3510,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '41';
+const APP_VERSION = '42';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
