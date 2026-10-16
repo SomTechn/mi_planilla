@@ -198,6 +198,8 @@ table.t tfoot td{font-weight:700;border-top:1.5px solid var(--linea);border-bott
 
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--tinta);color:#fff;padding:10px 18px;border-radius:999px;z-index:80;font-weight:500;box-shadow:var(--sombra);max-width:90vw}
 .toast.mal{background:var(--rojo)}
+.sup-movil{display:none}.sup-movil .item{gap:10px}
+@media (max-width:700px){.sup-movil{display:grid}.sup-escr{display:none}}
 /* ===== bloqueo con PIN ===== */
 .candado{position:fixed;inset:0;z-index:300;background:var(--tinta);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px calc(24px + env(safe-area-inset-bottom));overflow:auto}
 .candado .cz{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:center;gap:6px}
@@ -622,7 +624,7 @@ function navItems() {
     ['#/prestamos', 'Préstamos', ICON.prestamo, A], ['#/adelantos', 'Adelantos', ICON.adelanto, A], ['#/combustible', 'Combustible', ICON.moto, A], ['#/depreciacion', 'Depreciación', ICON.dep, A], ['#/historial', 'Historial', ICON.reloj, A], ['#/ajustes', 'Ajustes', ICON.ajustes, A]);
   const marcaje = marcajeActivo();
   if (S.admin) it.splice(1, 0, ...(marcaje ? [['#/marcajes', 'Marcajes', ICON.marca, A]] : []), ['#/horarios', 'Horarios', ICON.reloj, A]);
-  if (S.supervisor) it.push(['#/asistencia', 'Asistencia', ICON.planilla, 'Supervisión'], ['#/solicitudes', 'Solicitudes', ICON.bandeja, 'Supervisión'], ['#/vacaciones', 'Vacaciones', ICON.sol, 'Supervisión']);
+  if (S.supervisor) it.push(['#/asistencia', 'Asistencia', ICON.planilla, 'Supervisión'], ['#/solicitudes', 'Solicitudes', ICON.bandeja, 'Supervisión'], ['#/empleados', 'Empleados', ICON.gente, 'Supervisión'], ['#/vacaciones', 'Vacaciones', ICON.sol, 'Supervisión']);
   if (S.supervisor && marcaje) it.push(['#/marcajes', 'Marcajes', ICON.marca, 'Supervisión']);
   if (S.supervisor) it.push(['#/horarios', 'Horarios', ICON.reloj, 'Supervisión']);
   if (S.yo && marcaje) it.push(['#/marcar', 'Marcar', ICON.marca, M]);
@@ -638,7 +640,7 @@ function seccion(h) {
 // 5 accesos de la barra inferior (móvil), según el rol; el resto queda en el menú lateral
 const FAVORITOS = {
   admin: ['#/planillas', '#/solicitudes', '#/empleados', '#/marcajes', '#/prestamos', '#/adelantos', '#/combustible'],
-  supervisor: ['#/asistencia', '#/solicitudes', '#/vacaciones', '#/marcajes', '#/marcar', '#/mis-pagos', '#/mis-solicitudes', '#/mi-tiempo'],
+  supervisor: ['#/asistencia', '#/solicitudes', '#/empleados', '#/vacaciones', '#/marcajes', '#/marcar', '#/mis-pagos', '#/mis-solicitudes', '#/mi-tiempo'],
   empleado: ['#/marcar', '#/mi-tiempo', '#/mis-pagos', '#/mis-solicitudes', '#/mis-prestamos'],
 };
 const CORTO = { 'Mis solicitudes': 'Solicitudes', 'Mis préstamos': 'Préstamos', 'Mis pagos': 'Pagos', 'Mi tiempo': 'Mi tiempo' };
@@ -723,6 +725,8 @@ async function ruta() {
     if ((S.admin || S.supervisor) && p[0] === 'solicitudes') return vSolicitudes();
     if ((S.admin || S.supervisor) && p[0] === 'vacaciones') return vVacacionesSup(p[1]);
     if (S.supervisor && p[0] === 'asistencia') return vAsistenciaSup(p[1]);
+    if (S.supervisor && p[0] === 'empleados') return vEmpleadosSup();
+    if (S.supervisor && p[0] === 'empleado') return vEmpleadoSup(p[1]);
     if ((S.admin || S.supervisor) && p[0] === 'marcajes') return vMarcajes(p[1], p[2]);
     if ((S.admin || S.supervisor) && p[0] === 'horarios') return vHorarios(p[1]);
     if (S.yo && p[0] === 'marcar') return vMarcar();
@@ -2255,6 +2259,75 @@ function vacRegistrar(empId, despues) {
     } catch (er) { toast(errMsg(er), true); }
   };
 }
+
+/* ===================== Empleados para supervisión =====================
+   Sin salarios ni datos de pago, y sin editar ni eliminar. Solo saldo de horas e historial, y agregar horas extra. */
+async function vEmpleadosSup() {
+  cargando();
+  const filas = await q(sb.rpc('pl_saldos_horas'));
+  const tot = filas.reduce((a, r) => a + +r.disponible, 0);
+  const m = shell(`<div class="top"><div><h1>Empleados</h1><div class="muted small">${filas.length} activos · saldo de horas para descanso</div></div>
+      <div class="acc"><button class="btn pri" id="agh">${ICON.mas}Agregar horas extra</button></div></div>
+    <div class="totales" style="grid-template-columns:repeat(2,1fr);margin-bottom:14px"><div class="neto"><div class="k">Horas de descanso disponibles (todos)</div><div class="v">${N(tot)}</div></div>
+      <div><div class="k">Horas extra por aprobar</div><div class="v">${N(filas.reduce((a, r) => a + +r.extra_pendiente, 0))}</div></div></div>
+    <div class="lista sup-movil">${filas.map(r => `<a class="item" href="#/empleado/${r.id}"><div class="grow"><div class="t">${esc(r.nombre)}</div><div class="s">${esc(r.cargo || '')}${+r.extra_pendiente ? ` · ${N(r.extra_pendiente)} h por aprobar` : ''}</div></div>
+      <div class="r"><b style="font-size:17px;color:${+r.disponible > 0 ? 'var(--verde,#0E8A5F)' : 'inherit'}">${N(r.disponible)} h</b><div class="tiny muted">disponibles</div></div>
+      ${r.id === S.yo?.id ? '' : `<button class="btn sm" data-add="${r.id}" aria-label="Agregar horas a ${esc(r.nombre)}">${ICON.mas}</button>`}</a>`).join('')}</div>
+    <div class="panel sup-escr" style="padding:0"><div class="tscroll"><table class="t"><thead><tr><th>Empleado</th><th class="r">Disponible</th><th class="r">Ganadas</th><th class="r">Usadas</th><th class="r">Por aprobar</th><th></th></tr></thead>
+      <tbody>${filas.map(r => `<tr class="click" data-e="${r.id}"><td><b>${esc(r.nombre)}</b><div class="tiny muted">${[esc(r.cargo || ''), r.ultima ? `última hora extra ${fc(r.ultima)}` : ''].filter(Boolean).join(' · ')}</div></td>
+        <td class="r num"><b style="color:${+r.disponible > 0 ? 'var(--verde,#0E8A5F)' : 'inherit'}">${N(r.disponible)} h</b></td><td class="r num">${N(r.ganadas)}</td><td class="r num">${N(r.usadas)}</td>
+        <td class="r num">${+r.extra_pendiente || +r.descanso_pendiente ? `${+r.extra_pendiente ? `+${N(r.extra_pendiente)}` : ''}${+r.descanso_pendiente ? ` −${N(r.descanso_pendiente)}` : ''} h` : '—'}</td>
+        <td class="r">${r.id === S.yo?.id ? '<span class="chip gris">Tú</span>' : `<button class="btn sm" data-add="${r.id}">${ICON.mas}Horas</button>`}</td></tr>`).join('')}</tbody></table></div></div>
+    <p class="tiny muted" style="margin-top:10px">Disponible = horas ganadas para descanso menos las usadas y las solicitadas. Las horas extra que registras aquí quedan aprobadas.</p>`);
+  const lista = filas.filter(r => r.id !== S.yo?.id);
+  $('#agh', m).onclick = () => agregarHorasSup({ empleados: lista, despues: vEmpleadosSup });
+  $$('[data-add]', m).forEach(b => b.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); agregarHorasSup({ empleados: lista, empId: b.dataset.add, despues: vEmpleadosSup }); });
+  $$('tr[data-e]', m).forEach(tr => tr.onclick = () => location.hash = '#/empleado/' + tr.dataset.e);
+}
+async function vEmpleadoSup(id) {
+  cargando();
+  const [lista, banco, hxs] = await Promise.all([q(sb.rpc('pl_lista_empleados')), q(sb.rpc('pl_banco_horas', { p_emp: id })),
+    q(sb.from('pl_horas_extra').select('*').eq('empleado_id', id).order('fecha', { ascending: false }).limit(60))]);
+  const e = lista.find(x => x.id === id); if (!e) return shell('<div class="vacio">Empleado no encontrado</div>');
+  const propio = id === S.yo?.id;
+  const nombres = await nombresUsuarios(hxs.map(h => h.solicitado_por));
+  const m = shell(`<div class="miga"><a href="#/empleados">Empleados</a></div>
+    <div class="top"><div><h1>${esc(e.nombre)}</h1><div class="muted small">${esc(e.cargo || 'Sin cargo')}${e.fecha_ingreso ? ` · ingreso ${fc(e.fecha_ingreso)}` : ''}</div></div>
+      <div class="acc">${propio ? '' : `<button class="btn pri" id="agh">${ICON.mas}Agregar horas extra</button>`}</div></div>
+    <h2 style="margin:6px 0 10px">Banco de horas</h2>${htmlBanco(banco)}
+    <h2 style="margin:22px 0 10px">Historial de horas</h2>
+    ${hxs.length ? `<div class="tscroll"><table class="t"><tbody>${hxs.map(h => `<tr><td>${fc(h.fecha)}<div class="tiny muted">${etiquetaHoras(h)}${h.hora_inicio ? ` · ${horaCorta(h.hora_inicio)} – ${horaCorta(h.hora_fin)}` : ''} · ${esc(h.motivo || '')}</div>
+      <div class="tiny muted">${h.origen === 'supervision' ? 'Registrada por supervisión' : h.origen === 'marcaje' ? 'Según marcaje' : 'Registrada por el empleado'}${nombres[h.solicitado_por] ? ' · ' + esc(nombres[h.solicitado_por]) : ''} · ${fdt(h.solicitado_en)}</div></td>
+      <td class="r num">${h.tipo === 'descanso' ? '−' : '+'}${N(h.horas)} h</td><td class="r">${chipEstado(h.estado)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vacio">Sin horas registradas</div>'}`);
+  $('#agh', m) && ($('#agh', m).onclick = () => agregarHorasSup({ empleados: [{ id: e.id, nombre: e.nombre }], empId: e.id, despues: () => vEmpleadoSup(id) }));
+}
+async function nombresUsuarios(ids) {
+  ids = [...new Set(ids.filter(Boolean))]; if (!ids.length) return {};
+  try { const r = await q(sb.rpc('pl_nombres_usuarios', { p_ids: ids })); const o = {}; (r || []).forEach(x => o[x.id] = corto(x.nombre)); return o; } catch (_) { return {}; }
+}
+function agregarHorasSup({ empleados, empId = '', despues }) {
+  const h = hoja('Agregar horas extra', `<form id="fhs">
+    <label class="f">Empleado<select class="inp" name="emp" required>${empleados.length > 1 ? '<option value="">Elige un empleado</option>' : ''}${empleados.map(x => `<option value="${x.id}" ${x.id === empId ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></label>
+    <label class="f">Fecha<input class="inp" type="date" name="fecha" max="${iso(hoyHN())}" min="${addDias(iso(hoyHN()), -62)}" value="${iso(hoyHN())}" required></label>
+    <div class="row2"><label class="f">Hora de inicio<input class="inp" type="time" name="inicio" required></label><label class="f">Hora de fin<input class="inp" type="time" name="fin" required></label></div>
+    <div class="small muted" data-tot></div>
+    <label class="f">¿Qué trabajo hizo?<input class="inp" name="motivo" required maxlength="200" placeholder="Ej.: cierre de cartera, visitas después del horario"></label>
+    <label class="f">Las horas<select class="inp" name="destino"><option value="compensar">Van a su banco de horas (descanso)</option><option value="pagar">Se pagan en la planilla</option></select></label>
+    <p class="tiny muted" style="margin:0">Quedan aprobadas al guardar y se suman a su saldo. Se pueden registrar hasta 2 meses atrás.</p>
+    <div class="pie"><button class="btn pri">Guardar horas extra</button></div></form>`);
+  const f = $('#fhs', h.el); vincularRango(f);
+  f.onsubmit = async ev => {
+    ev.preventDefault(); const x = formData(f);
+    if (!x.emp) return toast('Elige un empleado', true);
+    if (!calcHoras(x.inicio, x.fin)) return toast('Revisa la hora de inicio y la de fin', true);
+    const b = $('button.pri', f); b.disabled = true;
+    try {
+      const r = await q(sb.rpc('pl_registrar_horas_extra_sup', { p_emp: x.emp, p_fecha: x.fecha, p_inicio: x.inicio, p_fin: x.fin, p_motivo: x.motivo, p_destino: x.destino }));
+      h.cerrar(); toast(`${N(r?.horas ?? calcHoras(x.inicio, x.fin))} horas extra registradas`); despues && despues();
+    } catch (er) { b.disabled = false; toast(errMsg(er), true); }
+  };
+}
+
 async function vVacacionesSup(empSel) {
   cargando();
   const emps = (await q(sb.rpc('pl_lista_empleados'))).filter(e => e.activo);
@@ -3395,7 +3468,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '40';
+const APP_VERSION = '41';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
