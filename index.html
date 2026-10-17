@@ -172,6 +172,7 @@ table.t tfoot td{font-weight:700;border-top:1.5px solid var(--linea);border-bott
 .leyenda{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--gris);margin:0 0 12px}
 .leyenda span{display:inline-flex;align-items:center;gap:6px}
 .m{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:8px;font-family:Poppins;font-weight:600;font-size:12px;border:0;cursor:pointer;position:relative}
+.m-R{background:#FFF4C2;color:#8A6A00}
 .m-T{background:#E6F0FE;color:var(--azul2)} .m-F{background:#FDE2E2;color:var(--rojo)} .m-V{background:#E3F6EE;color:var(--verde)}
 .m-I{background:#EFE7FD;color:var(--morado)} .m-P{background:#FFE9CC;color:#9A5A00} .m-L{background:#EEF1F6;color:var(--gris)} .m-N{background:#fff;color:#B5C0D3;border:1px dashed #C9D3E4}
 .m.parcial::after{content:"";position:absolute;right:3px;top:3px;width:6px;height:6px;border-radius:50%;background:var(--naranja)}
@@ -634,7 +635,7 @@ function navItems() {
 // sección del menú a la que pertenece una ruta
 function seccion(h) {
   const p = String(h).replace(/^#\//, '').split('/')[0];
-  const mapa = { decimos: 'empleados', pago: S.admin ? 'combustible' : 'mis-pagos', 'mi-combustible': 'mi-tiempo', solicitar: 'mis-solicitudes', 'mi-comprobante': 'mis-pagos', constancia: 'mis-pagos', planilla: 'planillas', comp: 'planillas', empleado: 'empleados', liquidacion: 'empleados' };
+  const mapa = { decimos: 'empleados', tiempo: 'empleados', pago: S.admin ? 'combustible' : 'mis-pagos', 'mi-combustible': 'mi-tiempo', solicitar: 'mis-solicitudes', 'mi-comprobante': 'mis-pagos', constancia: 'mis-pagos', planilla: 'planillas', comp: 'planillas', empleado: 'empleados', liquidacion: 'empleados' };
   return mapa[p] || p;
 }
 // 5 accesos de la barra inferior (móvil), según el rol; el resto queda en el menú lateral
@@ -712,6 +713,7 @@ async function ruta() {
       if (p[0] === 'planilla') return vPeriodo(p[1], p[2] || 'resumen');
       if (p[0] === 'empleados') return vEmpleados();
       if (p[0] === 'decimos') return vDecimos();
+      if (p[0] === 'tiempo') return vTiempoEmpleados();
       if (p[0] === 'empleado') return vEmpleado(p[1]);
       if (p[0] === 'prestamos') return vPrestamos();
       if (p[0] === 'adelantos') return vAdelantos();
@@ -1098,8 +1100,8 @@ function excelPlanilla(per, calc) {
 }
 
 /* ---------- asistencia ---------- */
-const MARCAS = { T: 'Trabajado', F: 'Falta', V: 'Vacaciones', I: 'Incapacidad', P: 'Permiso sin goce', L: 'Libre / permiso con goce', N: 'No laboraba (antes de ingresar o después de la baja)' };
-const HORAS_MARCA = { T: 8, F: 0, V: 8, I: 8, P: 0, L: 8, N: 0 };
+const MARCAS = { T: 'Trabajado', F: 'Falta', V: 'Vacaciones', I: 'Incapacidad', P: 'Permiso sin goce', L: 'Libre / permiso con goce', R: 'Feriado (día libre pagado)', N: 'No laboraba (antes de ingresar o después de la baja)' };
+const HORAS_MARCA = { T: 8, F: 0, V: 8, I: 8, P: 0, L: 8, R: 8, N: 0 };
 async function tabAsistencia(cont, per, recargar = () => vPeriodo(per.id, 'asistencia')) {
   const abierta = per.estado === 'abierta';
   const datos = await q(sb.rpc('pl_asistencia_periodo', { p_periodo: per.id }));
@@ -1116,9 +1118,25 @@ async function tabAsistencia(cont, per, recargar = () => vPeriodo(per.id, 'asist
       <thead><tr><th class="n">Empleado</th>${dias.map(d => `<th class="${d.getDay() === 0 ? 'dom' : ''}">${DIAS[d.getDay()]}<br>${d.getDate()}</th>`).join('')}<th>Horas</th></tr></thead>
       <tbody>${lista.map(e => `<tr><td class="n" title="${esc(e.nombre)}">${esc(corto(e.nombre))}</td>${dias.map(d => { const r = map[e.id + '|' + iso(d)]; if (!r) return `<td><button class="m m-N" data-e="${e.id}" data-f="${iso(d)}" ${abierta ? '' : 'disabled'}>·</button></td>`; const parcial = (r.marca === 'T' && +r.horas < 8) || r.minutos_tarde > 0; const extra = +r.horas_extra > 0 || r.feriado; return `<td><button class="m m-${r.marca} ${parcial ? 'parcial' : ''} ${extra ? 'extra' : ''}" data-e="${e.id}" data-f="${r.fecha}" title="${esc(MARCAS[r.marca])} · ${N(r.horas)} h${r.minutos_tarde ? ' · ' + r.minutos_tarde + ' min tarde' : ''}${+r.horas_extra ? ' · ' + N(r.horas_extra) + ' h extra' : ''}${r.nota ? ' · ' + r.nota : ''}" ${abierta ? '' : 'disabled'}>${r.marca === 'T' && +r.horas < 8 ? N(r.horas) : r.marca}</button></td>`; }).join('')}<td class="h">${N(horasPag(e.id))}</td></tr>`).join('')}</tbody>
     </table></div>` : `<div class="vacio"><b>No hay asistencia generada</b>Genera 8 horas diarias para los empleados con salario.</div>`}
-    ${abierta ? `<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn borde sm" id="gen">Agregar empleados faltantes</button><span class="small muted" style="align-self:center">Toca un día para marcar falta, vacaciones, horas extra o llegada tarde. La quincena se paga sobre 120 horas.</span></div>` : ''}`;
+    ${abierta ? `<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn borde sm" id="gen">Agregar empleados faltantes</button><button class="btn borde sm" id="ferall">Marcar feriado a todos</button><span class="small muted" style="align-self:center">Toca un día para marcar falta, vacaciones, horas extra o llegada tarde. La quincena se paga sobre 120 horas.</span></div>` : ''}`;
   $('#gen', cont) && ($('#gen', cont).onclick = async () => { try { const n = await q(sb.rpc('pl_generar_asistencia', { p_periodo: per.id })); toast(n ? `${n} días agregados` : 'No faltaba nadie'); recargar(); } catch (e) { toast(errMsg(e), true); } });
   if (!abierta) return;
+  $('#ferall', cont) && ($('#ferall', cont).onclick = () => {
+    const h = hoja('Marcar feriado a todos', `<form><label class="f">Día del feriado<input class="inp" type="date" name="fecha" min="${per.fecha_inicio}" max="${per.fecha_fin}" required></label>
+      <label class="f">Nombre del feriado<input class="inp" name="nombre" required maxlength="80" placeholder="Ej.: Feriado Morazánico"></label>
+      <p class="tiny muted" style="margin:0">Ese día queda como <b>R · Feriado (día libre pagado)</b> para todos los empleados de esta planilla. Se respetan vacaciones, incapacidades y los que aún no laboraban. Si alguien trabajó el feriado, edita su día y marca "Feriado trabajado".</p>
+      <div class="pie"><button class="btn pri">Marcar feriado</button></div></form>`);
+    $('form', h.el).onsubmit = async ev => {
+      ev.preventDefault(); const x = formData(ev.target); const b = $('button.pri', ev.target); b.disabled = true; let n = 0;
+      try {
+        for (const e of lista) {
+          const r = map[e.id + '|' + x.fecha]; if (r && ['V', 'I', 'N'].includes(r.marca)) continue;
+          await q(sb.rpc('pl_guardar_asistencia', { p_periodo: per.id, p_empleado: e.id, p_fecha: x.fecha, p_marca: 'R', p_horas: 8, p_minutos_tarde: 0, p_horas_extra: +(r?.horas_extra || 0), p_feriado: false, p_nota: 'Feriado: ' + x.nombre.trim() })); n++;
+        }
+        h.cerrar(); toast(`Feriado marcado a ${n} empleados`); recargar();
+      } catch (er) { b.disabled = false; toast(errMsg(er), true); }
+    };
+  });
   $$('button.m[data-e]', cont).forEach(b => b.onclick = () => editarDia(per, lista.find(e => e.id === b.dataset.e), b.dataset.f, map[b.dataset.e + '|' + b.dataset.f], recargar));
 }
 
@@ -1470,7 +1488,7 @@ async function vEmpleados() {
   const tSal = act.reduce((a, e) => a + (+e.salario_mensual || 0), 0), tCom = act.reduce((a, e) => a + e.prom, 0);
   const conComb = act.filter(e => e.recibe_combustible), conDep = act.filter(e => e.recibe_depreciacion);
   const tDep = conDep.reduce((a, e) => a + (+e.depreciacion_mensual || 0), 0);
-  const m = shell(`<div class="top"><div><h1>Empleados</h1><div class="muted small">${act.length} activos · ${pers.length ? `promedio de comisiones de ${pers.length === 1 ? '1 mes' : `${pers.length} meses`}: ${pers.map(p => p.nombre.replace(/^Comisiones /, '')).reverse().join(', ')}` : 'aún no hay meses de comisiones cerrados'}</div></div><div class="acc"><a class="btn borde" href="#/decimos">Proyección de décimos</a><button class="btn pri" id="nuevo">${ICON.mas}Agregar empleado</button></div></div>
+  const m = shell(`<div class="top"><div><h1>Empleados</h1><div class="muted small">${act.length} activos · ${pers.length ? `promedio de comisiones de ${pers.length === 1 ? '1 mes' : `${pers.length} meses`}: ${pers.map(p => p.nombre.replace(/^Comisiones /, '')).reverse().join(', ')}` : 'aún no hay meses de comisiones cerrados'}</div></div><div class="acc"><a class="btn borde" href="#/tiempo">Vacaciones y horas</a><a class="btn borde" href="#/decimos">Proyección de décimos</a><button class="btn pri" id="nuevo">${ICON.mas}Agregar empleado</button></div></div>
     <div class="tscroll"><table class="t" id="temp"><thead><tr>${COLS.map(([k, t, , al]) => `<th class="${al || ''} ordenable" data-k="${k}" aria-sort="none">${t}<span class="flecha"></span></th>`).join('')}</tr></thead><tbody></tbody>
     <tfoot><tr><td></td><td>Total (${act.length} activos)</td><td></td><td class="r">${L(tSal)}</td><td class="r">${L(tCom)}</td><td class="r">${L(tSal + tCom)}</td><td colspan="2" class="small muted" style="font-weight:500">Planilla quincenal: ${L(tSal / 2)}${conComb.length ? `<br>Combustible (efectivo): ${conComb.length}` : ''}${conDep.length ? `<br>Depreciación día 30: ${tDep ? L(tDep) : conDep.length + ' empleados'}` : ''}</td></tr></tfoot></table></div>`);
   const pintar = () => {
@@ -1573,10 +1591,10 @@ async function vEmpleado(id) {
     ${tablaPlantillas([...misPl, ...inactivas])}
     ${htmlDecimos(e)}
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px;flex-wrap:wrap"><h2>Vacaciones</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="vini">Saldo inicial</button><button class="btn sm" id="vaj">Ajuste</button><button class="btn sm pri" id="vreg">Registrar vacaciones</button></div></div>
-    ${htmlResumenVac(vac)}
+    ${htmlResumenVac(vac)}${+vac.disponible > 0 && +e.salario_mensual ? `<div class="small" style="margin-top:8px">Valor de los <b>${N(vac.disponible)} días</b> disponibles: <b>${L(Math.round(+vac.disponible * e.salario_mensual / 30))}</b> <span class="muted">(salario ÷ 30 por día)</span></div>` : ''}
     ${vmov.length ? `<div class="tscroll" style="margin-top:10px"><table class="t"><tbody>${vmov.map(v => `<tr><td>${v.tipo === 'ajuste' ? 'Ajuste' : `${fc(v.desde)} al ${fc(v.hasta)}`}<div class="tiny muted">${esc(v.nota || v.respuesta || '')}</div></td><td>${chipEstado(v.estado)}</td><td class="r num">${+v.dias > 0 && v.tipo === 'ajuste' ? '+' : ''}${N(v.dias)} días</td></tr>`).join('')}</tbody></table></div>` : ''}
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px"><h2>Horas extra</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="hajus">± Ajustar saldo</button><button class="btn sm pri" id="hreg">Registrar horas extra</button></div></div>
-    ${htmlBanco(banco)}${htmlAjustes(ajustesE, nombresAj)}
+    ${htmlBanco(banco)}${+banco.saldo > 0 && +e.salario_mensual ? `<div class="small" style="margin-top:8px">Si se pagaran las <b>${N(banco.saldo)} h</b> del banco: <b>${L(Math.round(+banco.saldo * e.salario_mensual / 240 * (+S.par?.factor_he || 1.25)))}</b> <span class="muted">(${L(e.salario_mensual / 240)} × ${N(+S.par?.factor_he || 1.25)} por hora)</span></div>` : ''}${htmlAjustes(ajustesE, nombresAj)}
     ${hxs.length ? `<div class="tscroll" style="margin-top:10px"><table class="t"><tbody>${hxs.map(h => `<tr><td>${fc(h.fecha)}<div class="tiny muted">${etiquetaHoras(h)}${h.hora_inicio ? ` · ${horaCorta(h.hora_inicio)} – ${horaCorta(h.hora_fin)}` : ''} · ${esc(h.motivo)}</div></td><td class="r num">${h.tipo === 'descanso' ? '−' : '+'}${N(h.horas)} h</td><td class="r">${chipEstado(h.estado)}</td></tr>`).join('')}</tbody></table></div>` : ''}
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px"><h2>Permisos</h2><button class="btn sm pri" id="preg">Registrar permiso</button></div>
     ${perms.length ? `<div class="tscroll"><table class="t"><tbody>${perms.map(p => `<tr><td>${rangoPermiso(p)}<div class="tiny muted">${esc(p.motivo)}</div></td><td class="small">${tipoPermiso(p)}</td><td class="r">${chipEstado(p.estado)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vacio">Sin permisos</div>'}
@@ -2452,6 +2470,36 @@ function htmlDecimos(e) {
   return `<div class="panel" style="margin-top:14px"><h3 style="margin-bottom:4px">Décimo tercer y cuarto mes ${corte === iso(hoyHN()) ? 'a la fecha' : 'a la fecha de baja'}</h3>
     <p class="tiny muted" style="margin:0 0 10px"><span class="chip warn">Solo administración</span> Acumulado proporcional sobre el salario mensual ordinario. Es una referencia que el empleado no ve; el monto final se calcula en la planilla de pago.</p>
     <div class="dec-g">${card('Aguinaldo · décimo tercer mes (ene–dic)', d13)}${card('Catorceavo · décimo cuarto mes (jul–jun)', d14)}</div></div>`;
+}
+
+
+/* Vacaciones y horas extra por empleado, con su valor en dinero (administración y gerencia) */
+async function vTiempoEmpleados() {
+  cargando();
+  const fs = await q(sb.rpc('pl_resumen_tiempo'));
+  const sum = k => fs.reduce((a, r) => a + +r[k], 0);
+  const f = fs[0]?.factor_he || 1.25;
+  const m = shell(`<div class="miga"><a href="#/empleados">Empleados</a></div><div class="top"><div><h1>Vacaciones y horas extra</h1><div class="muted small">${fs.length} empleados activos · al ${fl(iso(hoyHN()))}</div></div>
+      <div class="acc"><button class="btn borde" id="xls">${ICON.doc || ''}Descargar Excel</button></div></div>
+    <div class="totales" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px">
+      <div><div class="k">Días de vacaciones disponibles</div><div class="v">${N(sum('vac_disponible'))}</div></div>
+      <div><div class="k">Valor de esas vacaciones</div><div class="v">${L(sum('vac_valor'))}</div></div>
+      <div><div class="k">Horas extra en banco</div><div class="v">${N(sum('horas_saldo'))}</div></div>
+      <div class="neto"><div class="k">Si se pagaran las horas extra</div><div class="v">${L(sum('horas_valor'))}</div></div></div>
+    <div class="panel" style="padding:0"><div class="tscroll"><table class="t"><thead><tr><th>Empleado</th><th class="r">Vacaciones disponibles</th><th class="r">Valor vacaciones</th><th class="r">Horas extra en banco</th><th class="r">Valor si se pagan</th><th class="r">Por aprobar</th></tr></thead>
+      <tbody>${fs.map(r => `<tr class="click" data-e="${r.id}"><td><b>${esc(r.nombre)}</b><div class="tiny muted">${esc(r.cargo || '')}${r.vac_proximo ? `${r.cargo ? ' · ' : ''}próximas vacaciones: +${N(r.vac_proximo_dias)} días el ${fc(r.vac_proximo)}` : ''}</div></td>
+        <td class="r num">${N(r.vac_disponible)} días${+r.vac_pendientes ? `<div class="tiny muted">${N(r.vac_pendientes)} solicitados</div>` : ''}</td><td class="r num">${+r.vac_valor ? L(r.vac_valor) : '—'}</td>
+        <td class="r num"><b>${N(r.horas_saldo)} h</b>${+r.horas_pagadas ? `<div class="tiny muted">${N(r.horas_pagadas)} h ya pagadas</div>` : ''}</td>
+        <td class="r num">${+r.horas_valor ? `<b>${L(r.horas_valor)}</b><div class="tiny muted">${L(r.valor_hora)} × ${N(f)} por hora</div>` : '—'}</td>
+        <td class="r num">${+r.horas_pendientes ? `${N(r.horas_pendientes)} h` : '—'}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td><b>Total</b></td><td class="r num"><b>${N(sum('vac_disponible'))} días</b></td><td class="r num"><b>${L(sum('vac_valor'))}</b></td><td class="r num"><b>${N(sum('horas_saldo'))} h</b></td><td class="r num"><b>${L(sum('horas_valor'))}</b></td><td></td></tr></tfoot></table></div></div>
+    <p class="tiny muted" style="margin-top:10px">Valor de vacaciones = días disponibles × salario mensual ÷ 30. Valor de horas extra = horas en el banco × salario por hora (salario ÷ 240) × ${N(f)}. Son montos de referencia con el salario actual.</p>`);
+  $$('tr[data-e]', m).forEach(tr => tr.onclick = () => location.hash = '#/empleado/' + tr.dataset.e);
+  $('#xls', m).onclick = () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fs.map(r => ({ Empleado: r.nombre, Cargo: r.cargo || '', 'Salario mensual': +r.salario, 'Vacaciones disponibles (días)': +r.vac_disponible, 'Vacaciones solicitadas': +r.vac_pendientes, 'Valor vacaciones': +r.vac_valor, 'Horas extra en banco': +r.horas_saldo, 'Valor hora': +r.valor_hora, 'Valor si se pagan las horas': +r.horas_valor, 'Horas por aprobar': +r.horas_pendientes }))), 'Vacaciones y horas');
+    XLSX.writeFile(wb, `Vacaciones_y_horas_${iso(hoyHN())}.xlsx`);
+  };
 }
 
 async function vDecimos() {
@@ -3568,7 +3616,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '44';
+const APP_VERSION = '45';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
