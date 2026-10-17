@@ -293,6 +293,10 @@ body.bloqueada #app{visibility:hidden}
 .mk-ley{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:12.5px}
 .mk-ley span{display:inline-flex;align-items:center;gap:6px}
 .mk-pt{width:12px;height:12px;border-radius:50%;display:inline-block}
+.mk-al{display:inline-block;font-size:10.5px;font-weight:700;line-height:1.3;color:#9A3412;background:#FFEDD5;border-radius:6px;padding:1px 5px;margin-top:2px}
+.mk-alertas{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-bottom:14px}
+.mk-alertas .panel{padding:12px 14px}.mk-alertas h4{margin:0 0 6px;font-size:13px}
+.recordatorio{display:flex;align-items:center;gap:10px;justify-content:space-between;background:#FFF4C2;border:1px solid #F0D46B;color:#5C4500;border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:14px}
 .mk-pt.pendiente{box-shadow:0 0 0 3px #E0A800 inset}.mk-pt.aprobado{box-shadow:0 0 0 3px #19A35B inset}
 .mk-acc{display:grid;gap:12px;margin-top:12px}
 .mk-acc > .btn{justify-self:start}
@@ -676,6 +680,7 @@ function shell(html) {
   $$('a', side).forEach(a => a.addEventListener('click', () => abrir(false)));
   document.body.classList.remove('menu-abierto');
   if (S.admin || S.supervisor) refrescarBadge();
+  if (S.yo) recordatorioMarcaje($('#main'));
   return $('#main');
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') document.body.classList.remove('menu-abierto'); });
@@ -1796,6 +1801,7 @@ async function vAjustes() {
         <div><div class="small muted" style="margin-bottom:6px">Vista previa</div><div class="logo-prev" id="logoprev"></div></div>
         <div style="grid-column:1/-1;display:flex;justify-content:flex-end"><button class="btn pri">Guardar identidad</button></div></form>
       <p class="tiny muted" style="margin:12px 0 0">Mi Planilla es un sistema de ${DUENO_SISTEMA}.</p></div>
+    <div class="panel" style="margin-top:14px" id="pzonas"><div class="muted small">Cargando zonas de marcaje…</div></div>
     <div class="panel" style="margin-top:14px" id="pferiados"><div class="muted small">Cargando feriados…</div></div>
     <div class="panel" style="margin-top:14px"><h3 style="margin-bottom:4px">Accesos</h3>
       <p class="small muted" style="margin:0 0 10px">Pueden ver y editar todo: planillas, empleados, préstamos, adelantos y comprobantes de todos. El administrador principal del sistema siempre tiene este acceso. El <b>supervisor de asistencia</b> marca la asistencia de todos (faltas, llegadas tarde, horas extra), ve los marcajes y administra vacaciones, permisos y horas extra (no las suyas); no ve salarios, comprobantes ni préstamos. Solo aparecen empleados que ya tienen usuario.</p>
@@ -1819,6 +1825,7 @@ async function vAjustes() {
     $('form', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target); const row = { nombre: x.nombre.trim(), tipo: x.tipo, aplica: x.aplica, orden: +x.orden || 100, activo: !!x.activo }; try { if (c.id) await q(sb.from('pl_conceptos').update(row).eq('id', c.id)); else await q(sb.from('pl_conceptos').insert(row)); h.cerrar(); toast('Concepto guardado'); vAjustes(); } catch (er) { toast(errMsg(er), true); } };
   };
   $('#nuevo', m).onclick = () => edit(null);
+  gestionarZonas($('#pzonas', m)).catch(er => { $('#pzonas', m).innerHTML = `<div class="small muted">${esc(errMsg(er))}</div>`; });
   gestionarFeriados($('#pferiados', m)).catch(er => { $('#pferiados', m).innerHTML = `<div class="small muted">${esc(errMsg(er))}</div>`; });
   $('#nparea', m).onclick = () => editarPlantilla(null, { area: '' }, vAjustes);
   $$('[data-pl]', m).forEach(tr => tr.onclick = () => editarPlantilla(plArea.find(x => x.id === tr.dataset.pl), {}, vAjustes));
@@ -1966,6 +1973,12 @@ async function vMiComprobante(id) {
 }
 
 /* ===================== MARCAJE: hora, selfie y GPS ===================== */
+const ALERTAS_MK = { fuera_zona: ['Fuera de zona', 'Marcó fuera de la zona de trabajo'], otro_telefono: ['Otro teléfono', 'Marcó desde un teléfono distinto al registrado'],
+  gps_repetido: ['GPS repetido', 'La ubicación es idéntica a la de otro día (posible GPS falso)'], salto_imposible: ['Salto imposible', 'Se movió demasiado rápido desde el marcaje anterior (posible GPS falso)'],
+  foto_respaldo: ['Foto no en vivo', 'La selfie no se tomó con la cámara en vivo de la app'], olvido: ['Olvidó marcar', 'El empleado pidió agregar este marcaje porque no marcó'] };
+const chipsAlerta = al => (al || []).map(a => `<span class="mk-al" title="${esc(ALERTAS_MK[a]?.[1] || a)}">${esc(ALERTAS_MK[a]?.[0] || a)}</span>`).join(' ');
+// identificador de este teléfono (se registra con el primer marcaje)
+function idDispositivo() { try { let d = localStorage.getItem('mp_disp'); if (!d) { d = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)); localStorage.setItem('mp_disp', d); } return d; } catch (_) { return null; } }
 const TIPOS_MARCA = [['entrada', 'Entrada'], ['almuerzo_inicio', 'Salida a almuerzo'], ['almuerzo_fin', 'Regreso de almuerzo'], ['salida', 'Salida']];
 const nomMarca = t => (TIPOS_MARCA.find(x => x[0] === t) || [, t])[1];
 const hora = x => x ? new Date(x).toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Tegucigalpa' }) : '—';
@@ -1991,7 +2004,7 @@ function tomarSelfie(op = {}) {
     const bTomar = $('[data-tomar]', h.el), bUsar = $('[data-usar]', h.el), bOtra = $('[data-otra]', h.el);
     const mostrar = blob => { foto = blob; img.src = URL.createObjectURL(blob); img.classList.toggle('hidden', false); vid.classList.toggle('hidden', true); bTomar.classList.toggle('hidden', true); bUsar.classList.toggle('hidden', false); bOtra.classList.toggle('hidden', false); msg.textContent = ''; };
     const respaldo = () => { msg.innerHTML = 'No se pudo abrir la cámara aquí. Toca el botón para tomar la selfie con la cámara del teléfono.'; vid.classList.toggle('hidden', true); bTomar.disabled = false; bTomar.onclick = () => inp.click(); };
-    inp.onchange = async () => { const f = inp.files[0]; if (!f) return; const im = new Image(); im.onload = async () => mostrar(await reducirImagen(im)); im.src = URL.createObjectURL(f); };
+    inp.onchange = async () => { const f = inp.files[0]; if (!f) return; const im = new Image(); im.onload = async () => { const b = await reducirImagen(im); b.vivo = false; mostrar(b); }; im.src = URL.createObjectURL(f); };
     const abrir = async () => {
       if (!navigator.mediaDevices?.getUserMedia) return respaldo();
       try {
@@ -1999,13 +2012,33 @@ function tomarSelfie(op = {}) {
         if (!document.body.contains(h.el)) return parar();
         vid.srcObject = stream; await vid.play().catch(() => { });
         msg.textContent = trasera ? 'Enfoca el odómetro para que se lean los números y toca “Tomar foto”' : 'Centra tu cara y toca “Tomar foto”'; bTomar.disabled = false;
-        bTomar.onclick = async () => { const b = await reducirImagen(vid); parar(); mostrar(b); };
+        bTomar.onclick = async () => { const b = await reducirImagen(vid); b.vivo = true; parar(); mostrar(b); };
       } catch (_) { respaldo(); }
     };
     bOtra.onclick = () => { foto = null; img.classList.toggle('hidden', true); vid.classList.toggle('hidden', false); bTomar.classList.toggle('hidden', false); bUsar.classList.toggle('hidden', true); bOtra.classList.toggle('hidden', true); bTomar.disabled = true; abrir(); };
     bUsar.onclick = () => { listo = true; h.cerrar(); resolve(foto); };
     abrir();
   });
+}
+const celMia = r => !r ? '—' : `${hora(r.marcado_en)}${r.estado === 'pendiente' ? ' <span class="chip warn" style="font-size:10px">por revisar</span>' : r.estado === 'rechazado' ? ' <span class="chip red" style="font-size:10px">rechazado</span>' : ''}`;
+// Recordatorio de marcaje para el empleado (aparece arriba en sus pantallas)
+let _recMk = null;
+async function recordatorioMarcaje(main) {
+  if (!S.yo || S.yo.tipo_vinculo === 'colaborador' || !marcajeActivo() || location.hash.startsWith('#/marcar')) return;
+  try {
+    if (!_recMk || Date.now() - _recMk.t > 5 * 60000) {
+      const hoy = iso(hoyHN());
+      const [mh, rows] = await Promise.all([q(sb.rpc('pl_mi_horario')).catch(() => null), q(sb.from('pl_marcajes').select('fecha,tipo').eq('empleado_id', S.yo.id).eq('anulado', false).gte('fecha', addDias(hoy, -1)))]);
+      _recMk = { t: Date.now(), mh, rows, hoy };
+    }
+    const { mh, rows, hoy } = _recMk; const ya = (f, t) => rows.some(r => r.fecha === f && r.tipo === t);
+    const ahora = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Tegucigalpa' });
+    let msg = '';
+    if (mh && !mh.libre && mh.entrada && !ya(hoy, 'entrada') && ahora >= String(mh.entrada).slice(0, 5)) msg = `Aún no marcas tu entrada de hoy (tu horario: ${horaCorta(mh.entrada)}).`;
+    else if (mh && !mh.libre && mh.salida && ya(hoy, 'entrada') && !ya(hoy, 'salida') && ahora >= String(mh.salida).slice(0, 5)) msg = `Ya pasó tu hora de salida (${horaCorta(mh.salida)}). No olvides marcarla.`;
+    else if (ya(addDias(hoy, -1), 'entrada') && !ya(addDias(hoy, -1), 'salida')) msg = 'Ayer no marcaste tu salida. Puedes pedirla en Marcar → "Olvidé marcar".';
+    if (msg && main && document.body.contains(main) && !main.querySelector('.recordatorio')) main.insertAdjacentHTML('afterbegin', `<div class="recordatorio"><span>${msg}</span><a class="btn sm pri" href="#/marcar">Marcar</a></div>`);
+  } catch (_) { }
 }
 async function vMarcar() {
   cargando();
@@ -2028,9 +2061,19 @@ async function vMarcar() {
       <div class="small muted" id="estado">${ICON.camara.replace('<svg', '<svg width="14" height="14" style="vertical-align:-2px"')} Se tomará una selfie y tu ubicación. La hora la pone el sistema.</div>
       <button class="btn pri grande" id="bm">${ICON.marca}Marcar ${nomMarca(sugerida || opciones[0][0]).toLowerCase()}</button></form></div>`
       : `<div class="vacio"><b>Día completo</b>Ya marcaste tu salida. Trabajaste ${fmtHoras(horasTrabajadas(d))}.</div>`}
-    <h2 style="margin:22px 0 10px">Últimos 14 días</h2>
-    ${Object.keys(dias).length ? `<div class="tscroll"><table class="t"><thead><tr><th>Fecha</th><th>Entrada</th><th>Almuerzo</th><th>Salida</th><th class="r">Horas</th></tr></thead><tbody>${Object.entries(dias).map(([f, x]) => `<tr><td>${DIAS_LARGO[pf(f).getDay()].slice(0, 3)} ${fc(f)}</td><td>${hora(x.entrada?.marcado_en)}</td><td class="small">${x.almuerzo_inicio ? `${hora(x.almuerzo_inicio.marcado_en)} – ${hora(x.almuerzo_fin?.marcado_en)}` : '—'}</td><td>${hora(x.salida?.marcado_en)}</td><td class="r num">${fmtHoras(horasTrabajadas(x))}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vacio">Sin marcajes todavía.</div>'}`);
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px;flex-wrap:wrap"><h2>Últimos 14 días</h2><button class="btn sm borde" id="olvido">Olvidé marcar</button></div>
+    ${Object.keys(dias).length ? `<div class="tscroll"><table class="t"><thead><tr><th>Fecha</th><th>Entrada</th><th>Almuerzo</th><th>Salida</th><th class="r">Horas</th></tr></thead><tbody>${Object.entries(dias).map(([f, x]) => `<tr><td>${DIAS_LARGO[pf(f).getDay()].slice(0, 3)} ${fc(f)}</td><td>${celMia(x.entrada)}</td><td class="small">${x.almuerzo_inicio ? `${hora(x.almuerzo_inicio.marcado_en)} – ${hora(x.almuerzo_fin?.marcado_en)}` : '—'}</td><td>${celMia(x.salida)}</td><td class="r num">${fmtHoras(horasTrabajadas(x))}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vacio">Sin marcajes todavía.</div>'}`);
   const tic = setInterval(() => { const el = $('#reloj'); if (!el) return clearInterval(tic); el.textContent = hora(new Date()); }, 15000);
+  $('#olvido', m).onclick = () => {
+    const fechas = [0, 1, 2, 3].map(n => addDias(hoy, -n));
+    const h = hoja('Olvidé marcar', `<form style="display:grid;gap:12px"><p class="small muted" style="margin:0">Pide agregar un marcaje que olvidaste (hasta 3 días atrás). Tu supervisor lo revisa.</p>
+      <div class="row2"><label class="f">Día<select class="inp" name="fecha">${fechas.map(f2 => `<option value="${f2}">${DIAS_LARGO[pf(f2).getDay()]} ${fc(f2)}</option>`).join('')}</select></label>
+      <label class="f">¿Qué marcaje?<select class="inp" name="tipo">${TIPOS_MARCA.map(([t, n]) => `<option value="${t}" ${t === 'salida' ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
+      <label class="f">Hora real<input class="inp" type="time" name="hora" required></label>
+      <label class="f">¿Por qué no marcaste?<input class="inp" name="motivo" required maxlength="200" placeholder="Ej.: se me descargó el teléfono"></label>
+      <div class="pie"><button class="btn pri">Enviar solicitud</button></div></form>`);
+    $('form', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target); try { await q(sb.rpc('pl_solicitar_marcaje', { p_fecha: x.fecha, p_tipo: x.tipo, p_hora: x.hora, p_motivo: x.motivo })); h.cerrar(); toast('Solicitud enviada'); _recMk = null; vMarcar(); } catch (er) { toast(errMsg(er), true); } };
+  };
   const f = $('#fm', m); if (!f) return;
   $$('.segm button', f).forEach(b => b.onclick = () => { $$('.segm button', f).forEach(x => x.classList.toggle('on', x === b)); f.tipo.value = b.dataset.t; $('#bm', m).innerHTML = `${ICON.marca}Marcar ${nomMarca(b.dataset.t).toLowerCase()}`; });
   f.onsubmit = async e => {
@@ -2046,8 +2089,10 @@ async function vMarcar() {
       const ruta = `${S.yo.id}/${hoy}/${x.tipo}-${Date.now()}.jpg`;
       const up = await sb.storage.from('pl-marcajes').upload(ruta, foto, { contentType: 'image/jpeg', upsert: false });
       if (up.error) throw up.error;
-      const r = await q(sb.rpc('pl_registrar_marcaje', { p_tipo: x.tipo, p_lat: g.lat, p_lng: g.lng, p_precision: g.prec, p_foto: ruta, p_nota: x.nota || null, p_dispositivo: navigator.userAgent.slice(0, 200) }));
-      toast(`${nomMarca(x.tipo)} marcada a las ${hora(r.marcado_en)}`); vMarcar();
+      const r = await q(sb.rpc('pl_marcar', { p_tipo: x.tipo, p_lat: g.lat, p_lng: g.lng, p_precision: g.prec, p_foto: ruta, p_nota: x.nota || null, p_dispositivo: navigator.userAgent.slice(0, 200), p_disp_id: idDispositivo(), p_foto_vivo: foto.vivo !== false }));
+      const al = r.alertas || [];
+      toast(al.length ? `${nomMarca(x.tipo)} guardada a las ${hora(r.marcado_en)}. Queda por revisar: ${al.map(a => (ALERTAS_MK[a]?.[0] || a).toLowerCase()).join(', ')}` : `${nomMarca(x.tipo)} marcada a las ${hora(r.marcado_en)}`, !!al.length);
+      _recMk = null; vMarcar();
     } catch (er) { b.disabled = false; est.textContent = errMsg(er); toast(errMsg(er), true); }
   };
 }
@@ -2068,10 +2113,11 @@ async function vMarcajesDia(fecha) {
   cargando();
   const hoy = iso(hoyHN());
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha || '')) fecha = hoy;
-  const [emps0, rows, res, pers] = await Promise.all([
+  const [emps0, rows, res, pers, alr] = await Promise.all([
     q(sb.rpc('pl_lista_empleados')),
     q(sb.from('pl_marcajes').select('*').eq('fecha', fecha).order('marcado_en')),
-    q(sb.rpc('pl_marcaje_resumen', { p_desde: fecha, p_hasta: fecha })), quincenasSalario()]);
+    q(sb.rpc('pl_marcaje_resumen', { p_desde: fecha, p_hasta: fecha })), quincenasSalario(),
+    q(sb.rpc('pl_alertas_marcaje', { p_fecha: fecha })).catch(() => null)]);
   const emps = emps0.filter(e => e.activo);
   const urls = await urlsFotos(rows.map(r => r.foto_path));
   const val = rows.filter(r => !r.anulado);
@@ -2081,7 +2127,7 @@ async function vMarcajesDia(fecha) {
   const propio = id => !S.admin && S.yo && id === S.yo.id;
   const pend = val.filter(r => r.estado === 'pendiente' && !propio(r.empleado_id));
   const per = quincenaDe(pers, fecha);
-  const celda = (e, t, r) => r ? `<button class="marca-cel mk-${r.estado}" data-mk="${r.id}" title="${EST_MK[r.estado] || ''}">${urls[r.foto_path] ? `<img src="${urls[r.foto_path]}" alt="">` : '<span class="sinfoto"></span>'}<span><b>${hora(r.marcado_en)}</b><small class="tiny">${r.hora_original ? 'editado · ' : r.origen === 'admin' ? 'manual · ' : ''}${EST_MK[r.estado] || ''}</small>${r.precision_m > 100 ? `<small class="tiny" style="color:#8A6A00">GPS ±${Math.round(r.precision_m)} m</small>` : ''}</span></button>`
+  const celda = (e, t, r) => r ? `<button class="marca-cel mk-${r.estado}" data-mk="${r.id}" title="${EST_MK[r.estado] || ''}">${urls[r.foto_path] ? `<img src="${urls[r.foto_path]}" alt="">` : '<span class="sinfoto"></span>'}<span><b>${hora(r.marcado_en)}</b><small class="tiny">${r.hora_original ? 'editado · ' : r.origen === 'admin' ? 'manual · ' : r.origen === 'solicitud' ? 'solicitado · ' : r.auto_aprobado ? 'automático · ' : ''}${EST_MK[r.estado] || ''}</small>${r.alertas?.length ? `<small>${chipsAlerta(r.alertas)}</small>` : ''}${r.precision_m > 100 ? `<small class="tiny" style="color:#8A6A00">GPS ±${Math.round(r.precision_m)} m</small>` : ''}</span></button>`
     : (propio(e.id) || fecha > hoy ? '<span class="muted">—</span>' : `<button class="btn sm borde mk-add" data-add="${e.id}|${t}" title="Agregar marcaje manual">+ Agregar</button>`);
   const result = e => { const r = rs[e.id]; if (!r) return ''; const p = [];
     if (+r.tarde_min) p.push(`<span class="chip red">Tarde ${minTxt(r.tarde_min)}</span>`);
@@ -2093,7 +2139,11 @@ async function vMarcajesDia(fecha) {
       <div class="acc"><button class="btn borde sm" data-d="-1" aria-label="Día anterior">‹</button><input class="inp" type="date" id="fd" value="${fecha}" max="${hoy}" style="width:auto"><button class="btn borde sm" data-d="1" ${fecha >= hoy ? 'disabled' : ''} aria-label="Día siguiente">›</button>
       ${pend.length ? `<button class="btn pri sm" id="aprobar-dia">Aprobar ${pend.length} por revisar</button>` : ''}</div></div>
     ${tabsMarcajes('dia', fecha, per?.id)}
-    <div class="mk-ley"><span><i class="mk-pt pendiente"></i>Por revisar</span><span><i class="mk-pt aprobado"></i>Aprobado</span><span class="small muted">Toca un marcaje para aprobar, editar la hora o rechazar.</span></div>
+    ${alr && (alr.marcajes.length || alr.sin_entrada.length || alr.sin_salida.length) ? `<div class="mk-alertas">
+      ${alr.marcajes.length ? `<div class="panel"><h4>⚠ ${alr.marcajes.length} marcajes con alertas por revisar</h4>${alr.marcajes.map(a => `<div class="small">${esc(corto(a.nombre))} · ${nomMarca(a.tipo).toLowerCase()} ${hora(a.marcado_en)} ${chipsAlerta(a.alertas)}${a.distancia_m != null && a.alertas.includes('fuera_zona') ? ` <span class="tiny muted">a ${N(a.distancia_m)} m</span>` : ''}</div>`).join('')}</div>` : ''}
+      ${alr.sin_entrada.length ? `<div class="panel"><h4>No marcaron entrada (${alr.sin_entrada.length})</h4>${alr.sin_entrada.map(a => `<div class="small">${esc(corto(a.nombre))} <span class="tiny muted">· horario ${horaCorta(a.entrada)}</span></div>`).join('')}</div>` : ''}
+      ${alr.sin_salida.length ? `<div class="panel"><h4>No marcaron salida (${alr.sin_salida.length})</h4>${alr.sin_salida.map(a => `<div class="small">${esc(corto(a.nombre))}</div>`).join('')}</div>` : ''}</div>` : ''}
+    <div class="mk-ley"><span><i class="mk-pt pendiente"></i>Por revisar</span><span><i class="mk-pt aprobado"></i>Aprobado</span><span class="small muted">Los marcajes sin alertas se aprueban solos. Toca un marcaje para aprobar, editar la hora o rechazar.</span></div>
     <div class="tscroll"><table class="t marcas-t"><thead><tr><th>Empleado</th><th>Entrada</th><th>Salida a almuerzo</th><th>Regreso</th><th>Salida</th><th>Resultado</th></tr></thead><tbody>
       ${lista.map(e => { const d = por[e.id] || {}; return `<tr><td><b>${esc(e.nombre)}</b><div class="tiny muted">Horario: ${horarioTxt(rs[e.id] && !rs[e.id].sin_horario ? rs[e.id] : null)}</div></td>${TIPOS_MARCA.map(([t]) => `<td>${celda(e, t, d[t])}</td>`).join('')}<td>${result(e)}</td></tr>`; }).join('')}
     </tbody></table></div>
@@ -2115,7 +2165,10 @@ async function vMarcajesDia(fecha) {
       <div class="mk-mapa" data-mapa>${r.lat == null ? '<div class="vacio" style="height:100%;display:grid;place-items:center">Sin ubicación</div>' : ''}</div></div>
       <div class="panel small" style="margin-top:12px"><div class="cp-dato"><span>Hora</span><span><b>${fdt(r.marcado_en)}</b></span></div>
       ${r.hora_original ? `<div class="cp-dato"><span>Hora original</span><span>${fdt(r.hora_original)} · ${esc(r.motivo_edicion || '')}</span></div>` : r.origen === 'admin' ? `<div class="cp-dato"><span>Manual</span><span>${esc(r.motivo_edicion || r.nota || '')}</span></div>` : ''}
-      <div class="cp-dato"><span>Estado</span><span>${EST_MK[r.estado] || ''}${r.revisado_en ? ' · ' + fdt(r.revisado_en) : ''}</span></div>
+      <div class="cp-dato"><span>Estado</span><span>${EST_MK[r.estado] || ''}${r.auto_aprobado ? ' automáticamente' : ''}${r.revisado_en ? ' · ' + fdt(r.revisado_en) : ''}</span></div>
+      ${r.alertas?.length ? `<div class="cp-dato"><span>Alertas</span><span style="text-align:right">${r.alertas.map(a => `<div>${chipsAlerta([a])} <span class="tiny muted">${esc(ALERTAS_MK[a]?.[1] || '')}</span></div>`).join('')}</span></div>` : ''}
+      ${r.distancia_m != null ? `<div class="cp-dato"><span>Distancia a la zona</span><span>${N(r.distancia_m)} m${r.zona_id ? ' · dentro' : ' · fuera'}</span></div>` : ''}
+      ${r.origen === 'solicitud' ? `<div class="cp-dato"><span>Solicitud</span><span>${esc(r.motivo_edicion || '')}</span></div>` : ''}
       ${rs[r.empleado_id] && !rs[r.empleado_id].sin_horario ? `<div class="cp-dato"><span>Horario del día</span><span>${horarioTxt(rs[r.empleado_id])}</span></div>` : ''}
       ${r.lat != null ? `<div class="cp-dato"><span>Ubicación</span><span>${mapsLink(r.lat, r.lng)} ${r.precision_m ? `±${Math.round(r.precision_m)} m` : ''}</span></div>` : ''}
       ${r.nota ? `<div class="cp-dato"><span>Nota</span><span>${esc(r.nota)}</span></div>` : ''}</div>
@@ -2662,7 +2715,7 @@ function obtenerGPS() {
   return new Promise((res, rej) => {
     if (!navigator.geolocation) return rej(new Error('Este teléfono no permite ubicación'));
     navigator.geolocation.getCurrentPosition(p => res({ lat: p.coords.latitude, lng: p.coords.longitude, prec: p.coords.accuracy }),
-      e => rej(new Error(e.code === 1 ? 'Permite el acceso a la ubicación para registrar el odómetro' : 'No se pudo obtener la ubicación. Sal a un lugar abierto e intenta de nuevo')),
+      e => rej(new Error(e.code === 1 ? 'Permite el acceso a la ubicación en el navegador para continuar' : 'No se pudo obtener la ubicación. Sal a un lugar abierto e intenta de nuevo')),
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
   });
 }
@@ -2991,6 +3044,43 @@ function solicitarFeriado(id, nombre, vence) {
     try { await q(sb.rpc('pl_solicitar_feriado', { p_feriado: id, p_fecha: x.fecha, p_nota: x.nota || null })); h.cerrar(); toast('Feriado solicitado'); vMiTiempo('feriados'); }
     catch (er) { b.disabled = false; toast(errMsg(er), true); }
   };
+}
+
+// Ajustes → Zonas de trabajo para el marcaje, quién trabaja en la calle y teléfonos registrados
+async function gestionarZonas(cont) {
+  const [zs, es] = await Promise.all([q(sb.from('pl_zonas').select('*').order('creado_en')),
+    q(sb.from('pl_empleados').select('id,nombre,marca_libre,dispositivo_id,activo,tipo_vinculo,fecha_baja').eq('activo', true).order('nombre'))]);
+  const emps = es.filter(e => e.tipo_vinculo !== 'colaborador' && !e.fecha_baja);
+  cont.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap"><h3>Zonas de trabajo para el marcaje</h3><button class="btn sm pri" id="nzona">${ICON.mas}Agregar zona</button></div>
+    <p class="small muted" style="margin:0 0 10px">Si alguien marca fuera de estas zonas, el marcaje queda <b>por revisar</b> con la alerta "fuera de zona". Los marcajes sin alertas se aprueban solos.${zs.some(z => z.activo) ? '' : ' <b>Aún no hay zonas:</b> mientras tanto no se revisa la ubicación.'}</p>
+    ${zs.length ? zs.map(z => `<div class="interr" style="${z.activo ? '' : 'opacity:.55'}"><div><div class="t">${esc(z.nombre)}</div><div class="small muted">${z.lat.toFixed(6)}, ${z.lng.toFixed(6)} ${mapsLink(z.lat, z.lng)} · radio ${N(z.radio_m)} m</div></div>
+      <div style="display:flex;gap:10px;align-items:center"><button class="btn sm borde" data-zdel="${z.id}">Quitar</button><label class="sw" title="Activa"><input type="checkbox" data-zact="${z.id}" ${z.activo ? 'checked' : ''} aria-label="Zona activa"><i></i></label></div></div>`).join('') : '<div class="vacio" style="padding:14px">Sin zonas</div>'}
+    <h3 style="margin:18px 0 4px">Empleados</h3><p class="small muted" style="margin:0 0 8px"><b>Trabaja en la calle:</b> puede marcar en cualquier lugar sin alerta de zona. <b>Teléfono:</b> se registra con su primer marcaje; si marca desde otro teléfono queda por revisar. Si cambió de teléfono, toca "Cambiar teléfono".</p>
+    <div class="tscroll"><table class="t"><tbody>${emps.map(e => `<tr><td><b>${esc(e.nombre)}</b><div class="tiny muted">${e.dispositivo_id ? 'Teléfono registrado' : 'Sin teléfono registrado'}</div></td>
+      <td class="r"><label class="chk" style="justify-content:flex-end"><input type="checkbox" data-libre="${e.id}" ${e.marca_libre ? 'checked' : ''}>Trabaja en la calle</label></td>
+      <td class="r">${e.dispositivo_id ? `<button class="btn sm borde" data-rdisp="${e.id}">Cambiar teléfono</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+  const recargar = () => gestionarZonas(cont);
+  $('#nzona', cont).onclick = () => {
+    const h = hoja('Agregar zona de trabajo', `<form style="display:grid;gap:12px"><label class="f">Nombre<input class="inp" name="nombre" required maxlength="60" placeholder="Ej.: Oficina principal"></label>
+      <label class="f">Coordenadas (latitud, longitud)<input class="inp" name="coord" required placeholder="Ej.: 15.5042, -88.0251" inputmode="decimal"></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button type="button" class="btn sm borde" id="miubi">Usar mi ubicación actual</button><span class="tiny muted" id="ubimsg">En Google Maps: mantén presionado el punto y copia los números.</span></div>
+      <label class="f">Radio permitido (metros)<input class="inp" type="number" name="radio" min="20" max="5000" step="10" value="100" required></label>
+      <div class="mk-mapa hidden" data-mapa style="height:180px"></div>
+      <div class="pie"><button class="btn pri">Guardar zona</button></div></form>`);
+    const f = $('form', h.el); let mapa = $('[data-mapa]', h.el);
+    const leer = () => { const m2 = String(f.coord.value).match(/(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)/); return m2 ? { lat: +m2[1], lng: +m2[2] } : null; };
+    const ver = () => { const c = leer(); if (c && Math.abs(c.lat) <= 90 && Math.abs(c.lng) <= 180) { const nuevo = mapa.cloneNode(false); nuevo.classList.remove('hidden'); mapa.replaceWith(nuevo); mapa = nuevo; miniMapa(mapa, c.lat, c.lng, +f.radio.value || 100); } };
+    f.coord.onchange = ver; f.radio.onchange = ver;
+    $('#miubi', h.el).onclick = async () => { $('#ubimsg', h.el).textContent = 'Obteniendo ubicación…'; try { const g = await obtenerGPS(); f.coord.value = `${g.lat.toFixed(6)}, ${g.lng.toFixed(6)}`; $('#ubimsg', h.el).textContent = `Listo (precisión ±${Math.round(g.prec)} m)`; ver(); } catch (er) { $('#ubimsg', h.el).textContent = errMsg(er); } };
+    f.onsubmit = async ev => {
+      ev.preventDefault(); const c = leer(); if (!c || Math.abs(c.lat) > 90 || Math.abs(c.lng) > 180) return toast('Escribe las coordenadas como: 15.5042, -88.0251', true);
+      try { await q(sb.from('pl_zonas').insert({ nombre: f.nombre.value.trim(), lat: c.lat, lng: c.lng, radio_m: Math.round(+f.radio.value) })); h.cerrar(); toast('Zona guardada'); recargar(); } catch (er) { toast(errMsg(er), true); }
+    };
+  };
+  $$('[data-zact]', cont).forEach(ch => ch.onchange = async () => { try { await q(sb.from('pl_zonas').update({ activo: ch.checked }).eq('id', ch.dataset.zact)); toast(ch.checked ? 'Zona activada' : 'Zona desactivada'); recargar(); } catch (er) { ch.checked = !ch.checked; toast(errMsg(er), true); } });
+  $$('[data-zdel]', cont).forEach(b => b.onclick = async () => { if (!await confirmar('Quitar zona', 'Los marcajes que ya se hicieron no cambian.', 'Quitar', true)) return; try { await q(sb.from('pl_marcajes').update({ zona_id: null }).eq('zona_id', b.dataset.zdel)).catch(() => { }); await q(sb.from('pl_zonas').delete().eq('id', b.dataset.zdel)); toast('Zona quitada'); recargar(); } catch (er) { toast('No se pudo quitar; desactívala con el interruptor', true); } });
+  $$('[data-libre]', cont).forEach(ch => ch.onchange = async () => { try { await q(sb.rpc('pl_set_marca_libre', { p_emp: ch.dataset.libre, p_libre: ch.checked })); toast(ch.checked ? 'Puede marcar en cualquier lugar' : 'Debe marcar dentro de una zona'); } catch (er) { ch.checked = !ch.checked; toast(errMsg(er), true); } });
+  $$('[data-rdisp]', cont).forEach(b => b.onclick = async () => { if (!await confirmar('Cambiar teléfono', 'Se quita el teléfono registrado. El próximo teléfono desde el que marque quedará registrado.', 'Cambiar')) return; try { await q(sb.rpc('pl_reiniciar_dispositivo', { p_emp: b.dataset.rdisp })); toast('Listo: se registrará su próximo teléfono'); recargar(); } catch (er) { toast(errMsg(er), true); } });
 }
 async function gestionarFeriados(cont) {
   const fs = await q(sb.from('pl_feriados').select('*').order('fecha', { ascending: false }));
@@ -3625,7 +3715,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '46';
+const APP_VERSION = '47';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
