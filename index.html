@@ -1476,7 +1476,8 @@ async function vEmpleados() {
   // ganado = neto + adelantos/vales/préstamos (ya recibidos); penalizaciones y otras deducciones sí restan
   const sumCom = {}; comps.forEach(c => sumCom[c.empleado_id] = (sumCom[c.empleado_id] || 0) + ganado(c));
   const nMeses = perIds.length || 1;
-  const filas = emps.map(e => ({ ...e, prom: Math.round((sumCom[e.id] || 0) / nMeses) }));
+  const todos = emps.map(e => ({ ...e, prom: Math.round((sumCom[e.id] || 0) / nMeses) }));
+  const filas = todos.filter(e => e.tipo_vinculo !== 'colaborador'), colabs = todos.filter(e => e.tipo_vinculo === 'colaborador').sort((a, b) => (b.activo - a.activo) || a.nombre.localeCompare(b.nombre));
   filas.forEach(e => e.total = (+e.salario_mensual || 0) + e.prom);
   let orden = { k: 'nombre', dir: 1 };
   try { orden = JSON.parse(sessionStorage.getItem('pl_emp_orden')) || orden; } catch (_) { }
@@ -1490,7 +1491,10 @@ async function vEmpleados() {
   const tDep = conDep.reduce((a, e) => a + (+e.depreciacion_mensual || 0), 0);
   const m = shell(`<div class="top"><div><h1>Empleados</h1><div class="muted small">${act.length} activos · ${pers.length ? `promedio de comisiones de ${pers.length === 1 ? '1 mes' : `${pers.length} meses`}: ${pers.map(p => p.nombre.replace(/^Comisiones /, '')).reverse().join(', ')}` : 'aún no hay meses de comisiones cerrados'}</div></div><div class="acc"><a class="btn borde" href="#/tiempo">Vacaciones y horas</a><a class="btn borde" href="#/decimos">Proyección de décimos</a><button class="btn pri" id="nuevo">${ICON.mas}Agregar empleado</button></div></div>
     <div class="tscroll"><table class="t" id="temp"><thead><tr>${COLS.map(([k, t, , al]) => `<th class="${al || ''} ordenable" data-k="${k}" aria-sort="none">${t}<span class="flecha"></span></th>`).join('')}</tr></thead><tbody></tbody>
-    <tfoot><tr><td></td><td>Total (${act.length} activos)</td><td></td><td class="r">${L(tSal)}</td><td class="r">${L(tCom)}</td><td class="r">${L(tSal + tCom)}</td><td colspan="2" class="small muted" style="font-weight:500">Planilla quincenal: ${L(tSal / 2)}${conComb.length ? `<br>Combustible (efectivo): ${conComb.length}` : ''}${conDep.length ? `<br>Depreciación día 30: ${tDep ? L(tDep) : conDep.length + ' empleados'}` : ''}</td></tr></tfoot></table></div>`);
+    <tfoot><tr><td></td><td>Total (${act.length} activos)</td><td></td><td class="r">${L(tSal)}</td><td class="r">${L(tCom)}</td><td class="r">${L(tSal + tCom)}</td><td colspan="2" class="small muted" style="font-weight:500">Planilla quincenal: ${L(tSal / 2)}${conComb.length ? `<br>Combustible (efectivo): ${conComb.length}` : ''}${conDep.length ? `<br>Depreciación día 30: ${tDep ? L(tDep) : conDep.length + ' empleados'}` : ''}</td></tr></tfoot></table></div>
+    ${colabs.length ? `<h2 style="margin:24px 0 6px">Colaboradores externos</h2><p class="small muted" style="margin:0 0 10px">No son empleados directos: solo cobran bonificación en la planilla de comisiones (día 15). No entran en vacaciones, horas extra, feriados, décimos, asistencia ni en los totales de arriba.</p>
+    <div class="tscroll"><table class="t"><thead><tr><th>Nombre</th><th class="r">Bonificación promedio</th><th>Pago</th></tr></thead><tbody>${colabs.map(e => `<tr class="click" data-e="${e.id}" style="${e.activo ? '' : 'opacity:.5'}"><td><b>${esc(e.nombre)}</b>${e.activo ? '' : ' <span class="chip gris">inactivo</span>'}</td><td class="r">${e.prom ? L(e.prom) : '—'}</td><td class="small muted">${e.metodo_pago === 'EFECTIVO' ? 'Efectivo' : 'Transferencia ' + esc(e.banco || '')}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td>Total (${colabs.filter(e => e.activo).length})</td><td class="r">${L(colabs.filter(e => e.activo).reduce((a, e) => a + e.prom, 0))}</td><td></td></tr></tfoot></table></div>` : ''}`);
   const pintar = () => {
     const tipo = COLS.find(c => c[0] === orden.k)?.[2];
     const lista = [...filas].sort((a, b) => {
@@ -1510,6 +1514,7 @@ async function vEmpleados() {
     pintar();
   });
   pintar();
+  $$('tr[data-e]', m).forEach(tr => { if (!tr.closest('#temp')) tr.onclick = () => location.hash = `#/empleado/${tr.dataset.e}`; });
   $('#nuevo', m).onclick = () => editarEmpleado(null);
 }
 
@@ -1520,7 +1525,8 @@ function editarEmpleado(e) {
     <div class="row2"><label class="f">Identidad<input class="inp" name="identidad" value="${esc(e.identidad || '')}" inputmode="numeric"></label><label class="f">Teléfono (WhatsApp)<input class="inp" name="telefono" value="${esc(e.telefono || '')}" inputmode="tel"></label></div>
     <div class="row2"><label class="f">Cargo<input class="inp" name="cargo" value="${esc(e.cargo || '')}"></label><label class="f">Área<input class="inp" name="area" value="${esc(e.area || '')}"></label></div>
     <div class="row2"><label class="f">Salario mensual (L)<input class="inp" type="number" step="0.01" min="0" name="salario_mensual" value="${e.salario_mensual}"></label><label class="f">Seguro médico por quincena (L)<input class="inp" type="number" step="0.01" min="0" name="seguro_medico" value="${e.seguro_medico}"></label></div>
-    <label class="f">Fecha de ingreso<input class="inp" type="date" name="fecha_ingreso" value="${e.fecha_ingreso || ''}"></label>
+    <div class="row2"><label class="f">Fecha de ingreso<input class="inp" type="date" name="fecha_ingreso" value="${e.fecha_ingreso || ''}"></label>
+      <label class="f">Vínculo<select class="inp" name="tipo_vinculo"><option value="empleado" ${e.tipo_vinculo !== 'colaborador' ? 'selected' : ''}>Empleado directo</option><option value="colaborador" ${e.tipo_vinculo === 'colaborador' ? 'selected' : ''}>Colaborador externo (solo bonificación)</option></select></label></div>
     <div style="display:flex;gap:18px;flex-wrap:wrap"><label class="chk"><input type="checkbox" name="recibe_salario" ${e.recibe_salario ? 'checked' : ''}>Recibe salario</label><label class="chk"><input type="checkbox" name="recibe_comisiones" ${e.recibe_comisiones ? 'checked' : ''}>Recibe comisiones</label><label class="chk"><input type="checkbox" name="activo" ${e.activo ? 'checked' : ''}>Activo</label></div>
     <div class="panel" style="padding:12px 14px;display:grid;gap:10px;box-shadow:none"><div class="small" style="font-weight:600">Pagos de la moto</div>
       <label class="chk"><input type="checkbox" name="recibe_combustible" ${e.recibe_combustible ? 'checked' : ''}>Combustible <span class="muted small">(odómetro · en efectivo la misma fecha de la planilla)</span></label>
@@ -1539,7 +1545,7 @@ function editarEmpleado(e) {
   });
   $('form', h.el).onsubmit = async ev => {
     ev.preventDefault(); const x = formData(ev.target);
-    const row = { nombre: x.nombre.trim(), identidad: x.identidad || null, cargo: x.cargo || null, area: x.area || null, telefono: x.telefono || null, salario_mensual: +x.salario_mensual || 0, seguro_medico: +x.seguro_medico || 0, fecha_ingreso: x.fecha_ingreso || null, recibe_salario: !!x.recibe_salario, recibe_comisiones: !!x.recibe_comisiones, recibe_combustible: !!x.recibe_combustible, recibe_depreciacion: !!x.recibe_depreciacion, depreciacion_mensual: x.recibe_depreciacion ? (+x.depreciacion_mensual || 0) : 0, activo: !!x.activo, metodo_pago: x.metodo_pago, banco: x.banco || null, cuenta: x.cuenta || null };
+    const row = { tipo_vinculo: x.tipo_vinculo === 'colaborador' ? 'colaborador' : 'empleado', nombre: x.nombre.trim(), identidad: x.identidad || null, cargo: x.cargo || null, area: x.area || null, telefono: x.telefono || null, salario_mensual: +x.salario_mensual || 0, seguro_medico: +x.seguro_medico || 0, fecha_ingreso: x.fecha_ingreso || null, recibe_salario: !!x.recibe_salario, recibe_comisiones: !!x.recibe_comisiones, recibe_combustible: !!x.recibe_combustible, recibe_depreciacion: !!x.recibe_depreciacion, depreciacion_mensual: x.recibe_depreciacion ? (+x.depreciacion_mensual || 0) : 0, activo: !!x.activo, metodo_pago: x.metodo_pago, banco: x.banco || null, cuenta: x.cuenta || null };
     try {
       if (e.id) { await q(sb.from('pl_empleados').update(row).eq('id', e.id)); h.cerrar(); toast('Cambios guardados'); ruta(); }
       else { const n = await q(sb.from('pl_empleados').insert(row).select().single()); h.cerrar(); toast('Empleado agregado'); location.hash = `#/empleado/${n.id}`; }
@@ -1566,7 +1572,7 @@ async function vEmpleado(id) {
   const misPl = plantillasDe(e, 'comisiones', plants).concat(plantillasDe(e, 'salario', plants));
   const inactivas = plants.filter(p => p.empleado_id === id && !p.activo);
   const m = shell(`<div class="miga"><a href="#/empleados">Empleados</a></div>
-    <div class="top"><div><h1>${esc(e.nombre)}</h1><div class="muted small">${esc(e.cargo || 'Sin cargo')} · ingreso ${fc(e.fecha_ingreso)}${e.activo ? '' : e.fecha_baja ? ` · <span class="chip red">baja ${fc(e.fecha_baja)}</span>` : ' · <span class="chip gris">inactivo</span>'}</div></div><div class="acc"><button class="btn borde" id="cons">${ICON.doc}Constancia</button><a class="btn borde" href="#/liquidacion/${id}">Liquidación</a><button class="btn borde" id="edit">Editar datos</button>${e.activo && !e.fecha_baja ? '<button class="btn rojo" id="baja">Dar de baja</button>' : ''}</div></div>
+    <div class="top"><div><h1>${esc(e.nombre)}</h1><div class="muted small">${e.tipo_vinculo === 'colaborador' ? '<span class="chip gris">Colaborador externo</span> · ' : ''}${esc(e.cargo || 'Sin cargo')} · ingreso ${fc(e.fecha_ingreso)}${e.activo ? '' : e.fecha_baja ? ` · <span class="chip red">baja ${fc(e.fecha_baja)}</span>` : ' · <span class="chip gris">inactivo</span>'}</div></div><div class="acc"><button class="btn borde ${e.tipo_vinculo === 'colaborador' ? 'hidden' : ''}" id="cons">${ICON.doc}Constancia</button><a class="btn borde ${e.tipo_vinculo === 'colaborador' ? 'hidden' : ''}" href="#/liquidacion/${id}">Liquidación</a><button class="btn borde" id="edit">Editar datos</button>${e.activo && !e.fecha_baja ? '<button class="btn rojo" id="baja">Dar de baja</button>' : ''}</div></div>
     ${e.fecha_baja ? `<div class="panel baja-aviso"><div><b>Dado de baja el ${fl(e.fecha_baja)}</b> · ${esc(BAJA_MOTIVOS[e.motivo_baja] || e.motivo_baja || '')}${e.nota_baja ? `<div class="small muted">${esc(e.nota_baja)}</div>` : ''}<div class="tiny muted">Último día laborado. No aparece en planillas que empiezan después de esa fecha.</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><a class="btn sm pri" href="#/liquidacion/${id}">Calcular liquidación</a><button class="btn sm borde" id="reinc">Reincorporar</button></div></div>` : ''}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">
       <div class="panel"><h3 style="margin-bottom:8px">Datos de pago</h3>
@@ -1589,6 +1595,8 @@ async function vEmpleado(id) {
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px"><h2>Plantillas de cálculo</h2><button class="btn sm pri" id="nplant">${ICON.mas}Agregar cálculo</button></div>
     <p class="small muted" style="margin:-4px 0 10px">Al capturar la planilla solo se escriben las cantidades; el monto se calcula con estas reglas.</p>
     ${tablaPlantillas([...misPl, ...inactivas])}
+    ${e.tipo_vinculo === 'colaborador' ? `<div class="panel" style="margin-top:14px"><b>Colaborador externo</b><div class="small muted">No es empleado directo: solo se le paga la bonificación en la planilla de comisiones. No acumula vacaciones, horas extra, feriados, décimos ni prestaciones, y no aparece en asistencia, marcaje ni en los saldos.</div></div>` : ''}
+    <div class="${e.tipo_vinculo === 'colaborador' ? 'hidden' : ''}">
     ${htmlDecimos(e)}
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px;flex-wrap:wrap"><h2>Vacaciones</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="vini">Saldo inicial</button><button class="btn sm" id="vaj">Ajuste</button><button class="btn sm pri" id="vreg">Registrar vacaciones</button></div></div>
     ${htmlResumenVac(vac)}${+vac.disponible > 0 && +e.salario_mensual ? `<div class="small" style="margin-top:8px">Valor de los <b>${N(vac.disponible)} días</b> disponibles: <b>${L(Math.round(+vac.disponible * e.salario_mensual / 30))}</b> <span class="muted">(salario ÷ 30 por día)</span></div>` : ''}
@@ -1598,6 +1606,7 @@ async function vEmpleado(id) {
     ${hxs.length ? `<div class="tscroll" style="margin-top:10px"><table class="t"><tbody>${hxs.map(h => `<tr><td>${fc(h.fecha)}<div class="tiny muted">${etiquetaHoras(h)}${h.hora_inicio ? ` · ${horaCorta(h.hora_inicio)} – ${horaCorta(h.hora_fin)}` : ''} · ${esc(h.motivo)}</div></td><td class="r num">${h.tipo === 'descanso' ? '−' : '+'}${N(h.horas)} h</td><td class="r">${chipEstado(h.estado)}</td></tr>`).join('')}</tbody></table></div>` : ''}
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px"><h2>Permisos</h2><button class="btn sm pri" id="preg">Registrar permiso</button></div>
     ${perms.length ? `<div class="tscroll"><table class="t"><tbody>${perms.map(p => `<tr><td>${rangoPermiso(p)}<div class="tiny muted">${esc(p.motivo)}</div></td><td class="small">${tipoPermiso(p)}</td><td class="r">${chipEstado(p.estado)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vacio">Sin permisos</div>'}
+    </div>
     <h2 style="margin:22px 0 10px">Préstamos</h2>
     <div style="display:flex;justify-content:flex-end;margin:-38px 0 10px"><button class="btn sm" id="npres">${ICON.mas}Nuevo préstamo</button></div>
     ${pres.length ? `<div class="lista">${pres.map(p => itemPrestamo(p, true)).join('')}</div>` : '<div class="vacio">Sin préstamos</div>'}
@@ -3616,7 +3625,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '45';
+const APP_VERSION = '46';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
