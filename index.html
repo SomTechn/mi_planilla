@@ -1081,7 +1081,7 @@ async function imagenPlanilla(per, calc) {
       <tbody>${filas.map(({ c, i, adel, pres, otras }) => `<tr><td>${i + 1}</td><td><b>${esc(c.nombre)}</b></td><td>${esc(c.cargo || '')}</td><td class="r">${L(c.total_ingresos)}</td><td class="r">${adel ? L(adel) : '—'}</td><td class="r">${pres ? L(pres) : '—'}</td><td class="r">${otras > 0.004 ? L(otras) : '—'}</td><td class="r">${L(c.total_deducciones)}</td><td class="r"><b>${L(c.neto)}</b></td><td>${c.metodo_pago === 'EFECTIVO' ? 'Efectivo' : 'Transf. ' + esc(c.banco || '')}</td><td>${esc(c.metodo_pago === 'EFECTIVO' ? '' : (c.cuenta || ''))}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td></td><td>TOTALES</td><td></td><td class="r">${L(sum(x => x.c.total_ingresos))}</td><td class="r">${L(sum(x => x.adel))}</td><td class="r">${L(sum(x => x.pres))}</td><td class="r">${L(sum(x => Math.max(0, x.otras)))}</td><td class="r">${L(sum(x => x.c.total_deducciones))}</td><td class="r">${L(sum(x => x.c.neto))}</td><td colspan="2"></td></tr></tfoot></table>
     <div class="bloques">
-      <div class="bloque"><h4>Ingresos por concepto</h4>${conceptos('ingresos').map(([k, v]) => `<div><span>${esc(k)}</span><b>${L(v)}</b></div>`).join('') || '<div><span>—</span></div>'}</div>
+      ${per.tipo === 'comisiones' ? '<div></div>' : `<div class="bloque"><h4>Ingresos por concepto</h4>${conceptos('ingresos').map(([k, v]) => `<div><span>${esc(k)}</span><b>${L(v)}</b></div>`).join('') || '<div><span>—</span></div>'}</div>`}
       <div class="bloque"><h4>Forma de pago</h4><div><span>Efectivo</span><b>${L(ef)}</b></div>${Object.entries(bancos).map(([b, v]) => `<div><span>Transferencia ${esc(b)}</span><b>${L(v)}</b></div>`).join('')}<div style="border:0"><span><b>Total a pagar</b></span><b>${L(sum(x => x.c.neto))}</b></div></div>
     </div>
     <div class="firmas"><div>Elaborado por</div><div>Revisado por</div><div>Autorizado por${par.firma_nombre ? `<br><b>${esc(par.firma_nombre)}</b>${par.firma_cargo ? ' · ' + esc(par.firma_cargo) : ''}` : ''}</div></div>
@@ -3720,7 +3720,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '48';
+const APP_VERSION = '49';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
