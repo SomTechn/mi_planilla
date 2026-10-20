@@ -1326,12 +1326,15 @@ async function tabContable(cont, per, calc, T) {
   const lineasBanco = Object.entries(porBanco).sort((a, b) => (/BAC/.test(b[0]) - /BAC/.test(a[0])) || b[1] - a[1])
     .map(([b, monto]) => ({ t: llenar(def(com ? 'contab_txt_banco_com' : 'contab_txt_banco', com ? 'Ingreso de fondos entre {banco} a CAJA, Pago de comisiones de {mes} a colaboradores {anio}.' : 'Ingreso de fondos entre {banco} a CAJA, Pago de {quincena} quincena de {mes} a colaboradores {anio}.'), { banco: /BAC/.test(b) ? base.banco : b }), m: monto }));
   const efectivo = calc.filter(c => c.metodo_pago === 'EFECTIVO').reduce((a, c) => a + +c.neto, 0);
-  const adels = ad.filter(a => a.estado !== 'rechazado' && a.estado !== 'pendiente');
+  const adels = ad.filter(a => a.estado !== 'rechazado' && a.estado !== 'pendiente' && a.estado !== 'cancelado');
+  // un solo registro contable por empleado: se suman todos sus adelantos de la planilla
+  const gAd = {}; adels.forEach(a => { const k = a.empleado_id; const g = gAd[k] = gAd[k] || { nombre: a.pl_empleados?.nombre || '', tipo: a.tipo === 'comisiones' ? 'comisiones' : 'salario', monto: 0, n: 0, fechas: [], items: [] }; g.monto += +a.monto || 0; g.n++; g.fechas.push(a.fecha); g.items.push(a); });
+  const adelsEmp = Object.values(gAd).sort((a, b) => a.nombre.localeCompare(b.nombre));
   const grupos = [
     ['Gasto total de planilla', [{ t: llenar(def('contab_txt_gasto', 'Pago de planilla {periodo} a colaboradores.')), m: T.ing }]],
     ['Pagado por banco', [...lineasBanco,
       ...(efectivo > 0 ? [{ t: llenar('Pago en efectivo de planilla {periodo} a colaboradores.'), m: efectivo }] : [])]],
-    [`Adelantos de ${com ? 'comisiones' : 'salario'} (${adels.length})`, adels.map(a => ({ t: llenar(def('contab_txt_adelanto', 'Pago de adelanto de {tipo} ({nombre})'), { nombre: a.pl_empleados?.nombre || '', corto: corto(a.pl_empleados?.nombre || ''), tipo: a.tipo === 'comisiones' ? 'comisiones' : 'salario', fecha: fc(a.fecha) }), m: a.monto, f: a.fecha }))],
+    [`Adelantos de ${com ? 'comisiones' : 'salario'} (${adelsEmp.length} empleados · ${adels.length} adelantos)`, adelsEmp.map(g => ({ t: llenar(def('contab_txt_adelanto', 'Pago de adelanto de {tipo} ({nombre})'), { nombre: g.nombre, corto: corto(g.nombre), tipo: g.tipo, fecha: g.fechas.map(fc).join(', ') }), m: g.monto, det: g.n > 1 ? `${g.n} adelantos: ${g.items.map(a => `${fc(a.fecha)} ${L(a.monto)}`).join(' · ')}` : fc(g.fechas[0]) }))],
     ...(com ? [] : [[`Combustible (${comb.length})`, comb.map(c => ({ t: llenar(def('contab_txt_combustible', 'Pago de combustible - {corto}'), { nombre: c.pl_empleados?.nombre || '', corto: corto(c.pl_empleados?.nombre || '') }), m: c.monto }))]]),
     ['Total de deducciones', [{ t: llenar(def(com ? 'contab_txt_deducciones_com' : 'contab_txt_deducciones', com ? 'Deduccion de comisiones del mes de {mes} {anio}' : 'Deduccion de salario de la {quincena} quincena de mes de {mes}')), m: T.ded }]],
   ];
@@ -1339,7 +1342,7 @@ async function tabContable(cont, per, calc, T) {
   cont.innerHTML = `<div class="panel" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
       <div class="small muted" style="flex:1;min-width:220px">${per.estado !== 'cerrada' ? '<span class="chip warn">Planilla abierta</span> los montos pueden cambiar hasta que la cierres. ' : ''}Toca <b>Copiar</b> en el texto o en el monto y pégalo en el sistema contable. Los textos se cambian en Ajustes (los que empiezan con “Contabilidad”).</div>
       <button class="btn borde" id="ctodo">Copiar todo (texto y monto)</button></div>
-    ${grupos.map(([tit, l]) => `<h3 style="margin:16px 0 8px">${tit}</h3>${l.length ? `<div class="lista">${l.map(x => { const i = todas.indexOf(x); return `<div class="item cont-item" style="cursor:default"><div class="grow" style="min-width:0"><div class="t" style="font-weight:500;white-space:normal">${esc(x.t)}</div>${x.f ? `<div class="tiny muted">${fc(x.f)}</div>` : ''}</div>
+    ${grupos.map(([tit, l]) => `<h3 style="margin:16px 0 8px">${tit}</h3>${l.length ? `<div class="lista">${l.map(x => { const i = todas.indexOf(x); return `<div class="item cont-item" style="cursor:default"><div class="grow" style="min-width:0"><div class="t" style="font-weight:500;white-space:normal">${esc(x.t)}</div>${x.det ? `<div class="tiny muted">${esc(x.det)}</div>` : x.f ? `<div class="tiny muted">${fc(x.f)}</div>` : ''}</div>
       <div class="cont-acc"><button class="btn sm borde" data-ct="${i}" title="Copiar texto">Copiar texto</button><button class="btn sm pri num" data-cm="${i}" title="Copiar monto">${L(x.m)}</button></div></div>`; }).join('')}</div>` : '<div class="vacio" style="padding:14px">No hay en esta planilla.</div>'}`).join('')}`;
   $$('[data-ct]', cont).forEach(b => b.onclick = () => copiarTexto(todas[+b.dataset.ct].t));
   $$('[data-cm]', cont).forEach(b => b.onclick = () => copiarTexto(montoPlano(todas[+b.dataset.cm].m)));
@@ -3723,7 +3726,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '50';
+const APP_VERSION = '51';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
