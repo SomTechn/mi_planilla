@@ -1321,12 +1321,15 @@ async function tabContable(cont, per, calc, T) {
   const base = { periodo, quincena, mes: MESES[ini.getMonth()], anio: ini.getFullYear(), banco: par.contab_banco || 'BAC INVERSIONES' };
   const llenar = (tpl, extra = {}) => String(tpl || '').replace(/\{(\w+)\}/g, (m0, k) => (extra[k] ?? base[k] ?? m0));
   const def = (k, d) => (par[k] && par[k].trim()) ? par[k] : d;
-  const banco = calc.filter(c => c.metodo_pago !== 'EFECTIVO').reduce((a, c) => a + +c.neto, 0);
+  // lo pagado por transferencia, separado por el banco de cada colaborador (BAC usa el nombre de la cuenta de la empresa)
+  const porBanco = {}; calc.filter(c => c.metodo_pago !== 'EFECTIVO' && +c.neto).forEach(c => { const b = String(c.banco || 'BAC').trim().toUpperCase() || 'BAC'; porBanco[b] = (porBanco[b] || 0) + +c.neto; });
+  const lineasBanco = Object.entries(porBanco).sort((a, b) => (/BAC/.test(b[0]) - /BAC/.test(a[0])) || b[1] - a[1])
+    .map(([b, monto]) => ({ t: llenar(def(com ? 'contab_txt_banco_com' : 'contab_txt_banco', com ? 'Ingreso de fondos entre {banco} a CAJA, Pago de comisiones de {mes} a colaboradores {anio}.' : 'Ingreso de fondos entre {banco} a CAJA, Pago de {quincena} quincena de {mes} a colaboradores {anio}.'), { banco: /BAC/.test(b) ? base.banco : b }), m: monto }));
   const efectivo = calc.filter(c => c.metodo_pago === 'EFECTIVO').reduce((a, c) => a + +c.neto, 0);
   const adels = ad.filter(a => a.estado !== 'rechazado' && a.estado !== 'pendiente');
   const grupos = [
     ['Gasto total de planilla', [{ t: llenar(def('contab_txt_gasto', 'Pago de planilla {periodo} a colaboradores.')), m: T.ing }]],
-    ['Pagado por banco', [{ t: llenar(def(com ? 'contab_txt_banco_com' : 'contab_txt_banco', com ? 'Ingreso de fondos entre {banco} a CAJA, Pago de comisiones de {mes} a colaboradores {anio}.' : 'Ingreso de fondos entre {banco} a CAJA, Pago de {quincena} quincena de {mes} a colaboradores {anio}.')), m: banco },
+    ['Pagado por banco', [...lineasBanco,
       ...(efectivo > 0 ? [{ t: llenar('Pago en efectivo de planilla {periodo} a colaboradores.'), m: efectivo }] : [])]],
     [`Adelantos de ${com ? 'comisiones' : 'salario'} (${adels.length})`, adels.map(a => ({ t: llenar(def('contab_txt_adelanto', 'Pago de adelanto de {tipo} ({nombre})'), { nombre: a.pl_empleados?.nombre || '', corto: corto(a.pl_empleados?.nombre || ''), tipo: a.tipo === 'comisiones' ? 'comisiones' : 'salario', fecha: fc(a.fecha) }), m: a.monto, f: a.fecha }))],
     ...(com ? [] : [[`Combustible (${comb.length})`, comb.map(c => ({ t: llenar(def('contab_txt_combustible', 'Pago de combustible - {corto}'), { nombre: c.pl_empleados?.nombre || '', corto: corto(c.pl_empleados?.nombre || '') }), m: c.monto }))]]),
@@ -3720,7 +3723,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '49';
+const APP_VERSION = '50';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
