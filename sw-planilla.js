@@ -1,5 +1,5 @@
 // Service worker de la app de Planilla: abre sin conexión y se actualiza solo.
-const CACHE = 'planilla-v47';
+const CACHE = 'planilla-v48';
 const BASE = ['./', 'planilla.webmanifest', 'mi-planilla-192.png', 'mi-planilla-512.png', 'mi-planilla-180.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => Promise.all(BASE.map(u => c.add(u).catch(() => { })))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

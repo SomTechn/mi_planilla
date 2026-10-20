@@ -199,6 +199,7 @@ table.t tfoot td{font-weight:700;border-top:1.5px solid var(--linea);border-bott
 
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--tinta);color:#fff;padding:10px 18px;border-radius:999px;z-index:80;font-weight:500;box-shadow:var(--sombra);max-width:90vw}
 .toast.mal{background:var(--rojo)}
+.btn-copiar{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;margin-left:2px;vertical-align:middle;border:0;border-radius:8px;background:#EEF3FC;color:var(--azul2,#1877F2);cursor:pointer;padding:0}.btn-copiar:active{background:#D9E6FB}
 .sup-movil{display:none}.sup-movil .item{gap:10px}
 @media (max-width:700px){.sup-movil{display:grid}.sup-escr{display:none}}
 /* ===== bloqueo con PIN ===== */
@@ -1297,6 +1298,10 @@ async function editarMov(per, mv, empId, emps) {
 
 /* ---------- adelantos dentro del período ---------- */
 /* ===================== CONTABILIDAD: textos para copiar ===================== */
+// Botón pequeño para copiar un texto (no abre el elemento donde está)
+const ICON_COPIAR = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const btnCopiar = (t, titulo = 'Copiar') => `<button type="button" class="btn-copiar" data-copiar="${esc(t)}" title="${esc(titulo)}" aria-label="${esc(titulo)}">${ICON_COPIAR}</button>`;
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-copiar]'); if (!b) return; e.preventDefault(); e.stopPropagation(); copiarTexto(b.dataset.copiar); }, true);
 async function copiarTexto(t) {
   try { await navigator.clipboard.writeText(t); }
   catch (_) { const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (__) { } ta.remove(); }
@@ -1699,7 +1704,7 @@ function itemPrestamo(p, conBoton) {
   const pct = Math.min(100, Math.max(0, (+p.pagado / +p.monto_total) * 100));
   const cuotas = +p.saldo > 0 ? Math.ceil(+p.saldo / +p.cuota) : 0;
   return `<div class="item" ${conBoton ? `data-p="${p.id}"` : ''} style="display:block">
-    <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div class="t">${esc(p.codigo)} ${p.pl_empleados ? '· ' + esc(p.pl_empleados.nombre) : ''}</div><div class="s">Cuota ${L(p.cuota)} por ${p.aplica_en === 'comisiones' ? 'pago de comisiones' : 'quincena'}${cuotas ? ` · faltan ${cuotas} cuota${cuotas > 1 ? 's' : ''}` : ''}</div></div>
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div class="t">${esc(p.codigo)} ${p.pl_empleados ? `· ${esc(p.pl_empleados.nombre)} ${btnCopiar(p.pl_empleados.nombre, 'Copiar nombre')}` : ''}</div><div class="s">Cuota ${L(p.cuota)} por ${p.aplica_en === 'comisiones' ? 'pago de comisiones' : 'quincena'}${cuotas ? ` · faltan ${cuotas} cuota${cuotas > 1 ? 's' : ''}` : ''}</div></div>
       <div style="text-align:right">${+p.saldo <= 0.004 ? '<span class="chip ok">Pagado</span>' : (p.activo ? `<div class="num">${L(p.saldo)}</div><div class="tiny muted">saldo</div>` : '<span class="chip gris">Pausado</span>')}</div></div>
     <div class="barra"><i style="width:${pct}%"></i></div>
     <div class="tiny muted" style="margin-top:4px">Pagado ${L(p.pagado)} de ${L(p.monto_total)}</div></div>`;
@@ -3715,7 +3720,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '47';
+const APP_VERSION = '48';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
