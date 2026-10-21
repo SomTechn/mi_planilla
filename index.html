@@ -469,6 +469,47 @@ button.lnk{background:none;border:0;padding:0;color:var(--azul2);font-weight:600
   .hoja{animation:sube .18s ease-out}
   @keyframes sube{from{transform:translateY(12px);opacity:.6}to{transform:none;opacity:1}}
 }
+
+/* ---------- venta del servicio ---------- */
+.lp{min-height:100dvh;background:var(--fondo)}
+.lp-nav{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;background:var(--tinta);flex-wrap:wrap}
+.lp-nav nav{display:flex;align-items:center;gap:14px}
+.lp-nav nav a:not(.btn){color:#DCE8FF;text-decoration:none;font-weight:600;font-size:14px}
+.lp-hero{background:var(--tinta);color:#fff;text-align:center;padding:48px 16px 56px}
+.lp-hero h1{font-size:clamp(30px,6vw,48px);font-weight:800;letter-spacing:-.03em;max-width:760px;margin:0 auto}
+.lp-hero h1 span{color:var(--amarillo)}
+.lp-hero p{color:#C9D9F5;font-size:17px;max-width:600px;margin:16px auto 26px}
+.lp-cta{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.lp-sec{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.35)}
+.lp-nota{font-size:13px;color:#AFC6F0;margin-top:14px;text-align:center}
+.lp-sec-b{max-width:1040px;margin:0 auto;padding:48px 16px}
+.lp-sec-b>h2{text-align:center;font-size:clamp(22px,4vw,30px);margin-bottom:22px}
+.lp-alt{max-width:none;background:#fff;border-block:1px solid var(--linea)}
+.lp-alt>*{max-width:1040px;margin-left:auto;margin-right:auto}
+.lp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:14px}
+.lp-f{background:#fff;border:1px solid var(--linea);border-radius:var(--r-m);padding:18px}
+.lp-f h3{margin:10px 0 4px}.lp-f p{margin:0;color:var(--gris);font-size:14px}
+.lp-ic{width:42px;height:42px;border-radius:12px;background:var(--suave);color:var(--azul2);display:grid;place-items:center}.lp-ic svg{width:22px;height:22px}
+.lp-planes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:14px;align-items:stretch}
+.lp-plan{background:#fff;border:1.5px solid var(--linea);border-radius:var(--r-l);padding:20px;display:flex;flex-direction:column;gap:6px}
+.lp-plan.dest{border-color:var(--azul);box-shadow:var(--sombra)}
+.lp-plan .chip{align-self:flex-start}
+.lp-plan .btn{margin-top:auto}
+.lp-plan p{margin:2px 0 8px;color:var(--gris)}
+.lp-precio{font-family:Poppins;font-weight:800;font-size:30px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.lp-precio span{font-size:14px;font-weight:500;color:var(--gris)}
+.lp-planes.in .lp-precio{font-size:24px}.lp-planes.in .lp-plan{padding:16px;border-radius:var(--r-m)}
+.lp-pasos ol{list-style:none;padding:0;margin:0 0 26px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:14px;counter-reset:p}
+.lp-pasos li{counter-increment:p;background:#fff;border:1px solid var(--linea);border-radius:var(--r-m);padding:16px 16px 16px 58px;position:relative;color:var(--gris);font-size:14px}
+.lp-pasos li b{display:block;color:var(--tinta);font-size:15px}
+.lp-pasos li::before{content:counter(p);position:absolute;left:16px;top:16px;width:30px;height:30px;border-radius:50%;background:var(--amarillo);color:var(--tinta);font:700 15px/30px Poppins;text-align:center}
+.lp-legal{max-width:760px}.lp-legal h1{margin-bottom:6px}.lp-legal h3{margin:22px 0 6px}.lp-legal p{color:#33425E}
+.lp-pago{display:flex;gap:10px 24px;flex-wrap:wrap}.lp-pago div{display:grid}
+.lp-trampa{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+.login-alta{text-align:center;color:#AFC6F0;font-size:14px;margin:18px 0 0}.login-alta a{color:var(--amarillo);font-weight:600}
+.susc-banda{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#FFF6CC;color:#5C4700;border-radius:var(--r-m);padding:10px 14px;margin-bottom:16px;font-size:14px}
+.susc-banda.mal{background:#FDECEC;color:var(--rojo)}
+.susc-banda a{font-weight:700;color:inherit}
 </style>
 </head>
 <body>
@@ -511,6 +552,8 @@ function errMsg(e) {
   const m = e?.message || String(e);
   if (/duplicate key.*codigo/i.test(m)) return 'Ya existe un período con ese código.';
   if (/Invalid login/i.test(m)) return 'Usuario o contraseña incorrectos.';
+  if (/pl_vigente/.test(m)) return 'Tu suscripción está vencida: la app está en modo solo lectura. Renueva el plan para seguir registrando cambios.';
+  if (/row-level security/i.test(m)) return 'No tienes permiso para hacer este cambio.';
   return m;
 }
 async function q(p) { const { data, error } = await p; if (error) throw error; return data; }
@@ -574,7 +617,7 @@ const formData = f => Object.fromEntries(new FormData(f).entries());
 /* ===================== sesión ===================== */
 async function iniciar() {
   const { data: { session } } = await sb.auth.getSession();
-  if (!session) return pintarLogin();
+  if (!session) return publico();
   S.user = session.user;
   try {
     S.admin = !!(await q(sb.rpc('pl_es_admin')));
@@ -582,18 +625,22 @@ async function iniciar() {
     S.autoriza = S.admin ? !!(await q(sb.rpc('pl_puede_autorizar'))) : false;
     S.supervisor = !S.admin && !!(await q(sb.rpc('pl_es_supervisor')));
     S.par = await parametros().catch(() => ({}));
+    S.susc = await q(sb.rpc('pl_mi_suscripcion')).catch(() => null);
+    S.superadmin = !!S.susc?.superadmin;
     recordarEmpresa();
   } catch (e) { toast(errMsg(e), true); }
-  if (!S.admin && !S.yo && !S.supervisor) {
+  if (!S.admin && !S.yo && !S.supervisor && !S.superadmin) {
     app.innerHTML = `<div class="login"><div class="login-in"><div class="login-logo-wrap"><img class="login-logo" src="${APP_LOGO_IMG}" alt="Mi Planilla"></div><p class="login-sub">${esc(empNombre())}</p>
       <div class="err" style="background:#fff">Tu cuenta no está vinculada a ningún empleado. Pide al administrador que la vincule.</div>
       <button class="btn ama" style="margin-top:16px" onclick="salir()">Cerrar sesión</button></div></div>`;
     return;
   }
   if (!(await candado({ inicio: true }))) return;
-  if (!location.hash || location.hash === '#/') { location.hash = S.admin ? '#/planillas' : S.supervisor ? '#/asistencia' : '#/mis-pagos'; return; }
+  try { if (sessionStorage.getItem('mp_bienvenida')) { sessionStorage.removeItem('mp_bienvenida'); setTimeout(() => toast('¡Bienvenido! Agrega a tus colaboradores y completa los datos de tu empresa en Ajustes.'), 600); } } catch (_) { }
+  if (!location.hash || location.hash === '#/' || /^#\/(inicio|precios|registro|ingresar|terminos)/.test(location.hash)) { location.hash = inicioRol(); return; }
   ruta();
 }
+const inicioRol = () => S.admin ? '#/planillas' : S.supervisor ? '#/asistencia' : S.yo ? '#/mis-pagos' : '#/plataforma';
 async function salir() { await sb.auth.signOut(); S.user = null; S.admin = false; S.yo = null; location.hash = ''; pintarLogin(); }
 window.salir = salir;
 
@@ -609,7 +656,8 @@ function pintarLogin() {
       <div class="err hidden" id="lerr"></div>
       <button class="btn pri" type="submit">Ingresar</button>
     </form></div>
-    <div><div class="billetes"></div><div class="login-pie">Mi Planilla · un sistema de <b>${DUENO_SISTEMA}</b></div></div></div>`;
+    <p class="login-alta">¿Tu empresa aún no usa Mi Planilla? <a href="#/registro">Pruébala gratis</a></p></div>
+    <div><div class="billetes"></div><div class="login-pie"><a href="#/inicio" style="color:#AFC6F0">Conoce Mi Planilla</a> · un sistema de <b>${DUENO_SISTEMA}</b></div></div></div>`;
   $('#flog').onsubmit = async e => {
     e.preventDefault();
     const { u, p } = formData(e.target); const b = $('button', e.target); b.disabled = true;
@@ -619,6 +667,229 @@ function pintarLogin() {
     if (error) { const el = $('#lerr'); el.textContent = errMsg(error); el.classList.remove('hidden'); return; }
     try { sessionStorage.setItem('mp_recien', '1'); } catch (_) { }
     location.hash = ''; iniciar();
+  };
+}
+
+/* ===================== venta del servicio (SaaS) ===================== */
+// Página pública, registro de empresas, suscripción de cada empresa y panel del dueño del servicio.
+const FN_URL = `${SB_URL}/functions/v1`;
+const soloDigitos = s => String(s || '').replace(/\D/g, '');
+const waLink = (tel, txt) => { const d = soloDigitos(tel); return d ? `https://wa.me/${d.length === 8 ? '504' + d : d}?text=${encodeURIComponent(txt)}` : ''; };
+const precioPlan = p => +p.precio_mensual ? `${L(p.precio_mensual).replace('.00', '')}<span>/mes</span>` : 'Gratis';
+const limitePlan = p => p.max_empleados ? `Hasta ${p.max_empleados} colaboradores` : 'Colaboradores sin límite';
+let plataformaCache = null;
+async function plataforma() {
+  if (plataformaCache) return plataformaCache;
+  const [pl, cfg] = await Promise.all([sb.from('pl_planes').select('*').order('orden'), sb.from('pl_plataforma').select('*')]);
+  plataformaCache = { planes: pl.data || [], cfg: Object.fromEntries((cfg.data || []).map(r => [r.clave, r.valor || ''])) };
+  return plataformaCache;
+}
+
+// sin sesión: página de venta, registro, términos o ingreso
+function publico() {
+  const h = location.hash;
+  if (h.startsWith('#/registro')) return pintarRegistro();
+  if (h.startsWith('#/terminos')) return pintarTerminos();
+  if (h.startsWith('#/ingresar')) return pintarLogin();
+  const instalada = matchMedia('(display-mode: standalone)').matches;
+  if (h.startsWith('#/inicio') || h.startsWith('#/precios') || (!instalada && !empGuardada().nombre)) return pintarInicio();
+  pintarLogin();
+}
+
+const LP_FUNCIONES = [
+  ['planilla', 'Planilla quincenal y de comisiones', 'Calcula ingresos, deducciones, adelantos y préstamos de cada colaborador y cierra la planilla con un clic.'],
+  ['yo', 'Comprobantes en el teléfono', 'Cada colaborador ve y confirma sus comprobantes de pago; tú los mandas por WhatsApp o los imprimes.'],
+  ['marca', 'Marcaje con selfie y GPS', 'Entrada, almuerzo y salida desde el teléfono, con hora del servidor, foto y ubicación por zonas de trabajo.'],
+  ['bandeja', 'Solicitudes sin papel', 'Vacaciones, permisos, horas extra, adelantos y constancias: el colaborador pide y tú apruebas desde la app.'],
+  ['sol', 'Vacaciones y décimos', 'Saldo de vacaciones al día, décimo tercer y cuarto mes y liquidaciones calculadas según la ley de Honduras.'],
+  ['prestamo', 'Préstamos y adelantos', 'Registra préstamos con su cuota y se descuentan solos en cada planilla; los adelantos respetan tus reglas.'],
+];
+
+async function pintarInicio() {
+  document.title = 'Mi Planilla · planilla y pagos para tu empresa';
+  app.innerHTML = `<div class="lp">
+    <header class="lp-nav"><div class="app-marca"><img src="${APP_MARCA_IMG}" alt=""><span><span class="mi">Mi</span> Planilla</span></div>
+      <nav><a href="#/precios" data-ir="precios">Precios</a><a class="btn sm borde" href="#/ingresar">Ingresar</a></nav></header>
+    <section class="lp-hero">
+      <h1>La planilla de tu empresa,<br><span>lista en minutos.</span></h1>
+      <p>Pagos, comprobantes, marcaje, vacaciones, préstamos y solicitudes de tus colaboradores en una sola app. Hecha para empresas de Honduras.</p>
+      <div class="lp-cta"><a class="btn ama grande" href="#/registro">Probar gratis</a><a class="btn lp-sec" href="#/precios" data-ir="precios">Ver precios</a></div>
+      <div class="lp-nota" id="lp-prueba">Sin tarjeta de crédito · Cancela cuando quieras</div>
+    </section>
+    <div class="billetes"></div>
+    <section class="lp-sec-b"><h2>Todo lo que hace tu planilla, sin hojas de cálculo</h2>
+      <div class="lp-grid">${LP_FUNCIONES.map(([ic, t, d]) => `<div class="lp-f"><div class="lp-ic">${ICON[ic]}</div><h3>${t}</h3><p>${d}</p></div>`).join('')}</div>
+    </section>
+    <section class="lp-sec-b lp-alt" id="precios"><h2>Precios simples, en lempiras</h2><p class="muted" style="text-align:center;margin:-8px auto 22px">Pagas según la cantidad de colaboradores activos. Todos los planes incluyen todas las funciones.</p>
+      <div class="lp-planes" id="lp-planes"><div class="cargando">Cargando…</div></div>
+    </section>
+    <section class="lp-sec-b lp-pasos"><h2>Empieza hoy</h2>
+      <ol><li><b>Crea tu cuenta</b>Registra tu empresa en un minuto.</li><li><b>Agrega a tu equipo</b>Colaboradores, salarios y cuentas de banco.</li><li><b>Paga tu primera planilla</b>Comprobantes listos para enviar.</li></ol>
+      <div class="lp-cta" style="justify-content:center"><a class="btn pri grande" href="#/registro">Crear mi cuenta gratis</a></div>
+      <div id="lp-contacto" class="lp-nota" style="color:var(--gris)"></div>
+    </section>
+    <footer class="login-pie">Mi Planilla · un sistema de <b style="color:var(--tinta)">${DUENO_SISTEMA}</b> · <a href="#/terminos">Términos y privacidad</a></footer>
+  </div>`;
+  $$('[data-ir]', app).forEach(a => a.onclick = e => { e.preventDefault(); $('#' + a.dataset.ir)?.scrollIntoView({ behavior: 'smooth' }); });
+  if (location.hash.startsWith('#/precios')) setTimeout(() => $('#precios')?.scrollIntoView(), 50);
+  try {
+    const { planes, cfg } = await plataforma();
+    const pub = planes.filter(p => p.publico);
+    $('#lp-planes').innerHTML = pub.map((p, i) => `<div class="lp-plan ${i === 1 ? 'dest' : ''}">${i === 1 ? '<div class="chip">El más elegido</div>' : ''}<h3>${esc(p.nombre)}</h3><div class="lp-precio">${precioPlan(p)}</div><div class="muted">${limitePlan(p)}</div>${p.descripcion && p.descripcion !== limitePlan(p) ? `<p class="small">${esc(p.descripcion)}</p>` : ''}<a class="btn ${i === 1 ? 'pri' : 'borde'}" href="#/registro">Empezar prueba</a></div>`).join('') || '<div class="vacio">Pronto publicaremos los planes.</div>';
+    if (+cfg.dias_prueba) $('#lp-prueba').textContent = `${cfg.dias_prueba} días gratis · Sin tarjeta de crédito · Cancela cuando quieras`;
+    const wa = waLink(cfg.ventas_whatsapp, 'Hola, quiero información de Mi Planilla para mi empresa.');
+    $('#lp-contacto').innerHTML = [wa ? `<a href="${wa}" target="_blank" rel="noopener">Escríbenos por WhatsApp</a>` : '', cfg.ventas_correo ? `<a href="mailto:${esc(cfg.ventas_correo)}">${esc(cfg.ventas_correo)}</a>` : ''].filter(Boolean).join(' · ');
+  } catch (_) { }
+}
+
+function pintarRegistro() {
+  document.title = 'Crear cuenta · Mi Planilla';
+  app.innerHTML = `<div class="login"><div class="login-in">
+    <div class="login-logo-wrap"><img class="login-logo" src="${APP_LOGO_IMG}" alt="Mi Planilla"></div>
+    <p class="login-sub">Prueba gratis para tu empresa</p>
+    <form id="freg" autocomplete="on">
+      <h2>Crea tu cuenta</h2>
+      <label class="f">Nombre de la empresa<input class="inp" name="empresa" required maxlength="120" autocomplete="organization"></label>
+      <label class="f">Tu nombre<input class="inp" name="nombre" required maxlength="120" autocomplete="name"></label>
+      <div class="row2"><label class="f">Teléfono / WhatsApp<input class="inp" name="telefono" required inputmode="tel" autocomplete="tel"></label><label class="f">RTN (opcional)<input class="inp" name="rtn" inputmode="numeric"></label></div>
+      <label class="f">Correo<input class="inp" name="correo" type="email" required autocomplete="email" autocapitalize="none"></label>
+      <label class="f">Contraseña<input class="inp" name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+      <input name="sitio" tabindex="-1" autocomplete="off" class="lp-trampa" aria-hidden="true">
+      <label class="chk small"><input type="checkbox" required><span>Acepto los <a href="#/terminos" target="_blank">términos y la política de privacidad</a></span></label>
+      <div class="err hidden" id="rerr"></div>
+      <button class="btn pri" type="submit">Crear cuenta y empezar</button>
+      <p class="small muted" style="margin:0;text-align:center">¿Ya tienes cuenta? <a href="#/ingresar">Ingresar</a></p>
+    </form></div>
+    <div><div class="billetes"></div><div class="login-pie"><a href="#/inicio" style="color:#AFC6F0">Conoce Mi Planilla</a> · un sistema de <b>${DUENO_SISTEMA}</b></div></div></div>`;
+  $('#freg').onsubmit = async e => {
+    e.preventDefault();
+    const x = formData(e.target), b = $('button[type=submit]', e.target), er = $('#rerr');
+    b.disabled = true; b.textContent = 'Creando tu empresa…'; er.classList.add('hidden');
+    try {
+      const r = await fetch(`${FN_URL}/planilla-registro`, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, body: JSON.stringify(x) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) throw new Error(d.error || 'No se pudo crear la cuenta');
+      const { error } = await sb.auth.signInWithPassword({ email: x.correo.trim().toLowerCase(), password: x.password });
+      if (error) throw error;
+      try { localStorage.setItem('mp_empresa', JSON.stringify({ nombre: x.empresa.trim(), logo: '' })); sessionStorage.setItem('mp_recien', '1'); sessionStorage.setItem('mp_bienvenida', '1'); } catch (_) { }
+      location.hash = '#/empleados'; iniciar();
+    } catch (err) { er.textContent = errMsg(err); er.classList.remove('hidden'); b.disabled = false; b.textContent = 'Crear cuenta y empezar'; }
+  };
+}
+
+function pintarTerminos() {
+  document.title = 'Términos y privacidad · Mi Planilla';
+  app.innerHTML = `<div class="lp"><header class="lp-nav"><a href="#/inicio" class="app-marca" style="text-decoration:none"><img src="${APP_MARCA_IMG}" alt=""><span><span class="mi">Mi</span> Planilla</span></a><nav><a class="btn sm borde" href="#/ingresar">Ingresar</a></nav></header>
+  <section class="lp-sec-b lp-legal">
+    <h1>Términos de servicio y privacidad</h1>
+    <p class="muted small">Última actualización: ${fl(iso(new Date()))}</p>
+    <h3>1. El servicio</h3><p>Mi Planilla es un sistema en línea de ${DUENO_SISTEMA} para calcular y registrar la planilla, pagos, asistencia y solicitudes de los colaboradores de tu empresa. La empresa que se registra (el "cliente") es responsable de la información que ingresa y de revisar los cálculos antes de pagar.</p>
+    <h3>2. Prueba y suscripción</h3><p>Las empresas nuevas tienen un período de prueba gratis. Después, el servicio se paga por mes según el plan elegido (cantidad de colaboradores activos). Si el pago se atrasa más de los días de gracia, la cuenta queda en modo de solo lectura: puedes ver y descargar tu información, pero no registrar cambios, hasta renovar.</p>
+    <h3>3. Tus datos</h3><p>La información de tu empresa y tus colaboradores es tuya. Solo las personas de tu empresa con acceso pueden verla; cada empresa está separada de las demás. No vendemos ni compartimos tus datos con terceros. Usamos proveedores de infraestructura (base de datos y alojamiento en la nube) que guardan la información cifrada en tránsito.</p>
+    <h3>4. Datos personales de los colaboradores</h3><p>El cliente declara contar con la autorización de sus colaboradores para registrar sus datos (identidad, salario, cuentas bancarias, fotos y ubicación del marcaje) con fines laborales. El marcaje con foto y GPS solo se activa si el cliente lo enciende.</p>
+    <h3>5. Cancelación</h3><p>Puedes dejar de usar el servicio cuando quieras. Si lo pides, te entregamos una copia de tu información y la eliminamos de forma permanente.</p>
+    <h3>6. Responsabilidad</h3><p>Hacemos nuestro mejor esfuerzo para que el sistema esté disponible y calcule correctamente, pero no reemplaza la asesoría contable o legal. ${DUENO_SISTEMA} no es responsable por pagos hechos con datos incorrectos ingresados por el cliente.</p>
+    <p><a class="btn pri" href="#/registro">Crear mi cuenta</a></p>
+  </section></div>`;
+}
+
+// aviso de prueba, vencimiento o solo lectura
+function bandaSuscripcion() {
+  const s = S.susc;
+  if (!s || s.empresa?.principal) return '';
+  const ir = S.admin ? `<a href="#/suscripcion">${s.vigente ? 'Ver planes' : 'Renovar'}</a>` : '';
+  if (!s.vigente) return `<div class="susc-banda mal"><span><b>Suscripción vencida.</b> La app está en modo solo lectura.${S.admin ? '' : ' Avisa a tu administrador.'}</span>${ir}</div>`;
+  if (s.empresa.estado === 'prueba' && S.admin) return `<div class="susc-banda"><span><b>Prueba gratis:</b> ${s.dias > 0 ? `te quedan ${s.dias} día${s.dias === 1 ? '' : 's'}` : 'termina hoy'}.</span>${ir}</div>`;
+  if (s.dias != null && s.dias <= 5 && S.admin) return `<div class="susc-banda"><span>Tu plan ${s.dias < 0 ? `venció hace ${-s.dias} día${s.dias === -1 ? '' : 's'}` : s.dias === 0 ? 'vence hoy' : `vence en ${s.dias} día${s.dias === 1 ? '' : 's'}`}.</span>${ir}</div>`;
+  return '';
+}
+
+async function vSuscripcion() {
+  cargando();
+  const [susc, { planes, cfg }] = await Promise.all([q(sb.rpc('pl_mi_suscripcion')), plataforma()]);
+  S.susc = susc;
+  const e = susc.empresa, max = susc.max_empleados;
+  const est = !susc.vigente ? '<span class="chip red">Vencida · solo lectura</span>' : e.estado === 'prueba' ? '<span class="chip warn">Prueba gratis</span>' : '<span class="chip ok">Activa</span>';
+  const msg = p => `Hola, quiero ${e.estado === 'prueba' ? 'contratar' : 'renovar'} Mi Planilla. Empresa: ${e.nombre}. Plan: ${p.nombre} (${L(p.precio_mensual)}/mes).`;
+  const datosPago = [['Banco', cfg.pago_banco], ['Cuenta', cfg.pago_cuenta], ['A nombre de', cfg.pago_titular]].filter(x => x[1]);
+  const m = shell(`<div class="top"><div><h1>Suscripción</h1><div class="muted small">${esc(e.nombre)}</div></div></div>
+    <div class="totales"><div><div class="k">Plan</div><div class="v">${esc(susc.plan?.nombre || e.plan)}</div></div><div><div class="k">Estado</div><div class="v" style="font-size:15px;padding-top:4px">${est}</div></div>
+      <div><div class="k">${e.vence_en ? (susc.dias < 0 ? 'Venció' : 'Vence') : 'Vencimiento'}</div><div class="v" style="font-size:17px">${e.vence_en ? fc(e.vence_en) : 'Sin vencimiento'}</div></div>
+      <div class="${max && susc.empleados >= max ? 'neto' : ''}"><div class="k">Colaboradores activos</div><div class="v">${susc.empleados}${max ? ` <span class="muted" style="font-size:14px">de ${max}</span>` : ''}</div></div></div>
+    <div class="panel" style="margin-bottom:16px"><h3 style="margin-bottom:6px">Cómo pagar</h3><p class="muted small" style="margin:0 0 10px">${esc(cfg.pago_instrucciones || 'Contáctanos para renovar tu plan.')}</p>
+      ${datosPago.length ? `<div class="lp-pago">${datosPago.map(([k, v]) => `<div><span class="tiny muted">${k}</span><b>${esc(v)}</b></div>`).join('')}</div>` : ''}
+      <p class="small muted" style="margin:10px 0 0">Al confirmar tu pago activamos o extendemos tu plan el mismo día.</p></div>
+    <h3 style="margin:0 0 10px">Planes</h3>
+    <div class="lp-planes in">${planes.filter(p => p.publico || p.codigo === e.plan).map(p => { const wa = waLink(cfg.ventas_whatsapp, msg(p)); const muchos = p.max_empleados && susc.empleados > p.max_empleados;
+      return `<div class="lp-plan ${p.codigo === e.plan ? 'dest' : ''}">${p.codigo === e.plan ? '<div class="chip">Tu plan</div>' : ''}<h3>${esc(p.nombre)}</h3><div class="lp-precio">${precioPlan(p)}</div><div class="muted small">${limitePlan(p)}</div>
+        ${muchos ? '<div class="tiny" style="color:var(--rojo)">Tienes más colaboradores activos que este límite</div>' : wa ? `<a class="btn ${p.codigo === e.plan ? 'pri' : 'borde'} sm" href="${wa}" target="_blank" rel="noopener">${ICON.wa}${p.codigo === e.plan ? 'Pagar este plan' : 'Elegir este plan'}</a>` : ''}</div>`; }).join('')}</div>
+    ${(susc.pagos || []).length ? `<h3 style="margin:20px 0 10px">Pagos registrados</h3><div class="tscroll"><table class="t"><thead><tr><th>Fecha</th><th>Plan</th><th class="r">Meses</th><th class="r">Monto</th><th>Cubre hasta</th></tr></thead><tbody>
+      ${susc.pagos.map(p => `<tr><td>${fc(p.fecha)}</td><td>${esc(planes.find(x => x.codigo === p.plan)?.nombre || p.plan || '')}</td><td class="r">${p.meses}</td><td class="r">${L(p.monto)}</td><td>${fc(p.vence_despues)}</td></tr>`).join('')}</tbody></table></div>` : ''}`);
+  return m;
+}
+
+// panel del dueño del servicio: empresas, pagos y planes
+async function vPlataforma() {
+  cargando();
+  plataformaCache = null;
+  const [emps, { planes, cfg }] = await Promise.all([q(sb.rpc('pl_sa_empresas')), plataforma()]);
+  const precio = c => +(planes.find(p => p.codigo === c)?.precio_mensual || 0);
+  const cli = emps.filter(e => !e.principal);
+  const activas = cli.filter(e => e.vigente && e.estado === 'activa'), prueba = cli.filter(e => e.vigente && e.estado === 'prueba'), vencidas = cli.filter(e => !e.vigente);
+  const estado = e => e.principal ? '<span class="chip gris">Principal</span>' : !e.vigente ? `<span class="chip red">${e.estado === 'activa' || e.estado === 'prueba' ? 'Vencida' : esc(e.estado)}</span>` : e.estado === 'prueba' ? '<span class="chip warn">Prueba</span>' : '<span class="chip ok">Activa</span>';
+  const m = shell(`<div class="top"><div><h1>Plataforma</h1><div class="muted small">Empresas que usan Mi Planilla</div></div><div class="acc"><button class="btn borde" id="cfg">${ICON.ajustes}Cobro y contacto</button><button class="btn borde" id="pln">Planes</button></div></div>
+    <div class="totales"><div><div class="k">Activas</div><div class="v">${activas.length}</div></div><div><div class="k">En prueba</div><div class="v">${prueba.length}</div></div><div><div class="k">Vencidas</div><div class="v">${vencidas.length}</div></div><div class="neto"><div class="k">Ingreso mensual</div><div class="v">${L(activas.reduce((a, e) => a + precio(e.plan), 0))}</div></div></div>
+    <div class="tscroll"><table class="t"><thead><tr><th>Empresa</th><th>Estado</th><th>Plan</th><th>Vence</th><th class="r">Colab.</th><th>Admin</th><th>Contacto</th><th class="r">Pagado</th><th></th></tr></thead><tbody>
+    ${emps.map(e => `<tr><td><b>${esc(e.nombre)}</b><div class="tiny muted">Desde ${fc(e.creado_en)}</div></td><td>${estado(e)}</td><td>${esc(planes.find(p => p.codigo === e.plan)?.nombre || e.plan)}</td><td>${e.vence_en ? fc(e.vence_en) : '—'}</td>
+      <td class="r">${e.empleados}${e.max_empleados ? `/${e.max_empleados}` : ''}</td><td class="small">${esc(e.admins || '')}</td><td class="small">${esc(e.contacto || '')}${e.telefono ? `<br>${waLink(e.telefono, '') ? `<a href="${waLink(e.telefono, `Hola ${e.contacto || ''}, te escribimos de Mi Planilla.`)}" target="_blank" rel="noopener">${esc(e.telefono)}</a>` : esc(e.telefono)}` : ''}</td>
+      <td class="r">${L(e.total_pagado)}${e.ultimo_pago ? `<div class="tiny muted">${fc(e.ultimo_pago)}</div>` : ''}</td>
+      <td style="white-space:nowrap">${e.principal ? '' : `<button class="btn sm pri" data-pago="${e.id}">Pago</button> <button class="btn sm borde" data-ed="${e.id}">Editar</button>`}</td></tr>`).join('')}
+    </tbody></table></div>`);
+  const opPlanes = sel => planes.map(p => `<option value="${p.codigo}" ${p.codigo === sel ? 'selected' : ''}>${esc(p.nombre)} · ${L(p.precio_mensual)}</option>`).join('');
+  $$('[data-pago]', m).forEach(b => b.onclick = () => {
+    const e = emps.find(x => x.id === b.dataset.pago);
+    const h = hoja(`Registrar pago · ${e.nombre}`, `<form>
+      <div class="row2"><label class="f">Plan<select class="inp" name="plan">${opPlanes(e.plan)}</select></label><label class="f">Meses que paga<input class="inp" type="number" name="meses" min="1" value="1" required></label></div>
+      <div class="row2"><label class="f">Monto recibido (L)<input class="inp" type="number" step="0.01" min="0" name="monto" value="${precio(e.plan)}" required></label><label class="f">Referencia<input class="inp" name="referencia" placeholder="N.º de transferencia"></label></div>
+      <label class="f">Nota<input class="inp" name="nota"></label>
+      <p class="small muted" style="margin:0">Se extiende desde ${e.vence_en && pf(e.vence_en) > hoyHN() ? `el vencimiento actual (${fc(e.vence_en)})` : 'hoy'} y la empresa queda activa.</p>
+      <div class="pie"><button class="btn pri">Registrar pago</button></div></form>`);
+    const f = $('form', h.el);
+    f.plan.onchange = () => { f.monto.value = precio(f.plan.value) * (+f.meses.value || 1); };
+    f.meses.oninput = f.plan.onchange;
+    f.onsubmit = async ev => { ev.preventDefault(); const x = formData(f);
+      try { const r = await q(sb.rpc('pl_sa_registrar_pago', { p_empresa: e.id, p_monto: +x.monto, p_meses: +x.meses, p_plan: x.plan, p_referencia: x.referencia, p_nota: x.nota })); h.cerrar(); toast(`Pago registrado · vence ${fc(r.vence_en)}`); vPlataforma(); } catch (er) { toast(errMsg(er), true); } };
+  });
+  $$('[data-ed]', m).forEach(b => b.onclick = () => {
+    const e = emps.find(x => x.id === b.dataset.ed);
+    const h = hoja(`Editar · ${e.nombre}`, `<form>
+      <div class="row2"><label class="f">Estado<select class="inp" name="estado">${['prueba', 'activa', 'suspendida', 'cancelada'].map(s => `<option ${s === e.estado ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="f">Plan<select class="inp" name="plan">${opPlanes(e.plan)}</select></label></div>
+      <div class="row2"><label class="f">Vence<input class="inp" type="date" name="vence" value="${e.vence_en || ''}"></label><label class="f">Límite de colaboradores<input class="inp" type="number" min="1" name="max" value="${e.max_empleados || ''}" placeholder="El del plan"></label></div>
+      <label class="f">Nota interna<input class="inp" name="nota" value="${esc(e.nota || '')}"></label>
+      <div class="pie"><button class="btn pri">Guardar</button></div></form>`);
+    $('form', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target);
+      try { await q(sb.rpc('pl_sa_editar_empresa', { p_empresa: e.id, p_estado: x.estado, p_plan: x.plan, p_vence: x.vence || null, p_max: x.max ? +x.max : null, p_nota: x.nota })); h.cerrar(); toast('Empresa actualizada'); vPlataforma(); } catch (er) { toast(errMsg(er), true); } };
+  });
+  $('#cfg', m).onclick = () => {
+    const C = [['pago_instrucciones', 'Instrucciones de pago'], ['pago_banco', 'Banco'], ['pago_cuenta', 'Número de cuenta'], ['pago_titular', 'Cuenta a nombre de'], ['ventas_whatsapp', 'WhatsApp de ventas'], ['ventas_correo', 'Correo de ventas'], ['dias_prueba', 'Días de prueba gratis'], ['dias_gracia', 'Días de gracia después de vencer']];
+    const h = hoja('Cobro y contacto', `<form>${C.map(([k, t]) => `<label class="f">${t}<input class="inp" name="${k}" value="${esc(cfg[k] || '')}" ${k.startsWith('dias') ? 'type="number" min="0"' : ''}></label>`).join('')}<p class="small muted" style="margin:0">Se muestra a las empresas en Suscripción y en la página de venta.</p><div class="pie"><button class="btn pri">Guardar</button></div></form>`);
+    $('form', h.el).onsubmit = async ev => { ev.preventDefault(); try { await q(sb.rpc('pl_sa_guardar_plataforma', { p_datos: formData(ev.target) })); h.cerrar(); toast('Datos guardados'); vPlataforma(); } catch (er) { toast(errMsg(er), true); } };
+  };
+  $('#pln', m).onclick = () => {
+    const h = hoja('Planes', `<div class="lista">${planes.map(p => `<div class="item" data-pl="${p.codigo}"><div class="grow"><div class="t">${esc(p.nombre)} ${p.publico ? '' : '<span class="chip gris">Oculto</span>'}</div><div class="s">${limitePlan(p)} · ${L(p.precio_mensual)}/mes</div></div></div>`).join('')}</div><div class="pie"><button class="btn pri" id="nplan">${ICON.mas}Nuevo plan</button></div>`, { ancha: true });
+    const editar = p => {
+      h.cerrar(); p = p || { codigo: '', nombre: '', max_empleados: '', precio_mensual: '', descripcion: '', publico: true };
+      const h2 = hoja(p.codigo ? `Plan ${p.nombre}` : 'Nuevo plan', `<form>
+        <div class="row2"><label class="f">Código<input class="inp" name="codigo" value="${esc(p.codigo)}" ${p.codigo ? 'readonly' : ''} required pattern="[a-z0-9_-]+" placeholder="pyme"></label><label class="f">Nombre<input class="inp" name="nombre" value="${esc(p.nombre)}" required></label></div>
+        <div class="row2"><label class="f">Precio mensual (L)<input class="inp" type="number" step="0.01" min="0" name="precio" value="${p.precio_mensual}" required></label><label class="f">Máximo de colaboradores<input class="inp" type="number" min="1" name="max" value="${p.max_empleados ?? ''}" placeholder="Sin límite"></label></div>
+        <label class="f">Descripción<input class="inp" name="descripcion" value="${esc(p.descripcion || '')}"></label>
+        <label class="chk"><input type="checkbox" name="publico" ${p.publico ? 'checked' : ''}>Mostrar en la página de precios</label>
+        <div class="pie"><button class="btn pri">Guardar plan</button></div></form>`);
+      $('form', h2.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target);
+        try { await q(sb.rpc('pl_sa_guardar_plan', { p_codigo: x.codigo.trim().toLowerCase(), p_nombre: x.nombre.trim(), p_max: x.max ? +x.max : null, p_precio: +x.precio, p_descripcion: x.descripcion, p_publico: !!x.publico })); h2.cerrar(); toast('Plan guardado'); vPlataforma(); } catch (er) { toast(errMsg(er), true); } };
+    };
+    $$('[data-pl]', h.el).forEach(d => d.onclick = () => editar(planes.find(p => p.codigo === d.dataset.pl)));
+    $('#nplan', h.el).onclick = () => editar(null);
   };
 }
 
@@ -634,6 +905,8 @@ function navItems() {
   if (S.supervisor && marcaje) it.push(['#/marcajes', 'Marcajes', ICON.marca, 'Supervisión']);
   if (S.supervisor) it.push(['#/horarios', 'Horarios', ICON.reloj, 'Supervisión']);
   if (S.yo && marcaje) it.push(['#/marcar', 'Marcar', ICON.marca, M]);
+  if (S.admin && S.susc && !S.susc.empresa?.principal) it.push(['#/suscripcion', 'Suscripción', ICON.prestamo, A]);
+  if (S.superadmin) it.push(['#/plataforma', 'Plataforma', ICON.planilla, 'Dueño del servicio']);
   if (S.yo) it.push(['#/mi-tiempo', 'Mi tiempo', ICON.sol, M], ['#/mis-pagos', 'Mis pagos', ICON.yo, M], ['#/mis-solicitudes', 'Mis solicitudes', ICON.bandeja, M], ['#/mis-prestamos', 'Mis préstamos', ICON.prestamo, M]);
   return it;
 }
@@ -670,7 +943,7 @@ function shell(html) {
       <nav class="nav">${items.map(([href, t, ic, g], i) => `${(S.admin || S.supervisor) && S.yo && g !== items[i - 1]?.[3] ? `<div class="nav-g">${g}</div>` : ''}<a href="${href}" class="${on(href)}">${ic}<span>${t}</span>${href === '#/solicitudes' ? '<b class="badge hidden" data-badge></b>' : ''}</a>`).join('')}</nav>
       <div class="side-pie"><span>${esc(nom)}</span><button data-instalar ${promptInstalar ? '' : 'hidden'} onclick="instalarApp()">Instalar app</button><button onclick="miSeguridad()">PIN y huella</button><button onclick="cambiarMiClave()">Cambiar contraseña</button><button onclick="salir()">Cerrar sesión</button></div>
     </aside>
-    <main id="main">${html}</main>
+    <main id="main">${bandaSuscripcion()}${html}</main>
   </div>
   <nav class="bottom">${abajo.map(([href, t, ic]) => `<a href="${href}" class="${on(href)}">${ic}<span>${CORTO[t] || t}</span>${href === '#/solicitudes' ? '<b class="badge hidden" data-badge></b>' : ''}</a>`).join('')}</nav>`;
   const side = $('#side'), velo = $('#sidevelo'), hamb = $('#hamb');
@@ -711,7 +984,8 @@ const cargando = () => shell('<div class="cargando">Cargando…</div>');
 
 window.addEventListener('hashchange', ruta);
 async function ruta() {
-  if (!S.user || bloqueada) return;
+  if (!S.user) return publico();
+  if (bloqueada) return;
   const p = location.hash.replace(/^#\//, '').split('/');
   try {
     if (S.admin) {
@@ -729,7 +1003,9 @@ async function ruta() {
       if (p[0] === 'liquidacion') return vLiquidacion(p[1]);
       if (p[0] === 'ajustes') return vAjustes();
       if (p[0] === 'comp') return vComprobanteAdmin(p[1], p[2]);
+      if (p[0] === 'suscripcion') return vSuscripcion();
     }
+    if (S.superadmin && p[0] === 'plataforma') return vPlataforma();
     if ((S.admin || S.supervisor) && p[0] === 'solicitudes') return vSolicitudes();
     if ((S.admin || S.supervisor) && p[0] === 'vacaciones') return vVacacionesSup(p[1]);
     if (S.supervisor && p[0] === 'asistencia') return vAsistenciaSup(p[1]);
@@ -752,7 +1028,7 @@ async function ruta() {
       if (p[0] === 'mis-solicitudes') return vMisSolicitudes();
       if (p[0] === 'solicitar') return ({ adelanto: vMiAdelanto, vacaciones: vMisVacaciones, permiso: vMisPermisos, horas: vRegistrarHoras, descanso: vSolicitarDescanso }[p[1]] || vMisSolicitudes)();
     }
-    location.hash = S.admin ? '#/planillas' : S.supervisor ? '#/asistencia' : '#/mis-pagos';
+    location.hash = inicioRol();
   } catch (e) { console.error(e); shell(`<div class="err">${esc(errMsg(e))}</div>`); }
 }
 
@@ -3726,7 +4002,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '51';
+const APP_VERSION = '52';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
