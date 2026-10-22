@@ -508,6 +508,7 @@ button.lnk{background:none;border:0;padding:0;color:var(--azul2);font-weight:600
 .lp-trampa{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 .login-alta{text-align:center;color:#AFC6F0;font-size:14px;margin:18px 0 0}.login-alta a{color:var(--amarillo);font-weight:600}
 .susc-banda{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#FFF6CC;color:#5C4700;border-radius:var(--r-m);padding:10px 14px;margin-bottom:16px;font-size:14px}
+.push-banda{background:var(--suave);color:var(--tinta)}.push-banda .acc{display:flex;gap:8px}
 .susc-banda.mal{background:#FDECEC;color:var(--rojo)}
 .susc-banda a{font-weight:700;color:inherit}
 </style>
@@ -636,12 +637,13 @@ async function iniciar() {
     return;
   }
   if (!(await candado({ inicio: true }))) return;
+  refrescarPush();
   try { if (sessionStorage.getItem('mp_bienvenida')) { sessionStorage.removeItem('mp_bienvenida'); setTimeout(() => toast('¡Bienvenido! Agrega a tus colaboradores y completa los datos de tu empresa en Ajustes.'), 600); } } catch (_) { }
   if (!location.hash || location.hash === '#/' || /^#\/(inicio|precios|registro|ingresar|terminos)/.test(location.hash)) { location.hash = inicioRol(); return; }
   ruta();
 }
 const inicioRol = () => S.admin ? '#/planillas' : S.supervisor ? '#/asistencia' : S.yo ? '#/mis-pagos' : '#/plataforma';
-async function salir() { await sb.auth.signOut(); S.user = null; S.admin = false; S.yo = null; location.hash = ''; pintarLogin(); }
+async function salir() { await soltarPush(); await sb.auth.signOut(); S.user = null; S.admin = false; S.yo = null; location.hash = ''; pintarLogin(); }
 window.salir = salir;
 
 function pintarLogin() {
@@ -893,6 +895,71 @@ async function vPlataforma() {
   };
 }
 
+/* ===================== notificaciones push ===================== */
+// Avisos al teléfono: comprobantes, solicitudes resueltas, adelantos entregados y (para admin/supervisión) solicitudes nuevas.
+const esIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+const enApp = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const pushSoportado = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && location.protocol === 'https:';
+const b64aBytes = s => { const r = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, c => c.charCodeAt(0)); };
+async function fnPush(body) {
+  const { data, error } = await sb.functions.invoke('planilla-push', { body });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+async function suscribirPush() {
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) { const { publica } = await fnPush({ clave: true }); sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64aBytes(publica) }); }
+  const j = sub.toJSON();
+  await q(sb.rpc('pl_guardar_push', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_agente: navigator.userAgent }));
+}
+async function activarPush() {
+  if (!pushSoportado()) throw new Error(esIOS() && !enApp() ? 'En iPhone primero instala la app (Compartir › Agregar a inicio) y ábrela desde el ícono.' : 'Este navegador no permite notificaciones.');
+  if (await Notification.requestPermission() !== 'granted') throw new Error('No diste permiso. Actívalo en los ajustes del navegador para este sitio.');
+  await suscribirPush();
+}
+// al entrar: si ya dio permiso, deja el teléfono ligado a la cuenta que inició sesión
+async function refrescarPush() { try { if (pushSoportado() && Notification.permission === 'granted') await suscribirPush(); } catch (_) { } }
+// al salir: el teléfono deja de recibir los avisos de esa cuenta
+async function soltarPush() {
+  try {
+    if (!pushSoportado()) return;
+    const sub = await (await navigator.serviceWorker.getRegistration())?.pushManager.getSubscription();
+    if (sub) await sb.rpc('pl_borrar_push', { p_endpoint: sub.endpoint });
+  } catch (_) { }
+}
+const pushNoMolestar = () => { try { return !!localStorage.getItem('mp_push_no'); } catch (_) { return false; } };
+function bandaPush() {
+  if (pushNoMolestar()) return '';
+  const puede = pushSoportado() && Notification.permission === 'default', ios = !pushSoportado() && esIOS() && !enApp();
+  if (!puede && !ios) return '';
+  const txt = S.admin || S.supervisor ? 'Activa las notificaciones para enterarte al momento de cada solicitud nueva.' : 'Activa las notificaciones para enterarte de tus pagos y de tus solicitudes aprobadas.';
+  return `<div class="susc-banda push-banda"><span>🔔 ${ios ? 'Para recibir avisos en iPhone, instala la app: Compartir › Agregar a inicio.' : txt}</span><span class="acc">${ios ? '' : '<button class="btn sm pri" data-push-si>Activar</button>'}<button class="btn sm borde" data-push-no>Ahora no</button></span></div>`;
+}
+function enlazarBandaPush(root) {
+  const b = $('.push-banda', root); if (!b) return;
+  $('[data-push-no]', b).onclick = () => { try { localStorage.setItem('mp_push_no', '1'); } catch (_) { } b.remove(); };
+  const si = $('[data-push-si]', b);
+  if (si) si.onclick = async () => { si.disabled = true; try { await activarPush(); b.remove(); toast('Notificaciones activadas'); } catch (e) { si.disabled = false; toast(errMsg(e), true); } };
+}
+async function misNotificaciones() {
+  const estado = !pushSoportado() ? (esIOS() && !enApp() ? 'ios' : 'no') : Notification.permission;
+  const sub = estado === 'granted' ? await (await navigator.serviceWorker.getRegistration())?.pushManager.getSubscription().catch(() => null) : null;
+  const txt = { ios: 'En iPhone las notificaciones solo funcionan con la app instalada: toca Compartir › Agregar a inicio y ábrela desde el ícono.',
+    no: 'Este navegador no permite notificaciones. Prueba con Chrome en Android o con la app instalada.',
+    denied: 'Las notificaciones están bloqueadas para este sitio. Actívalas en los ajustes del navegador (ícono del candado junto a la dirección) y vuelve aquí.',
+    default: 'Recibe un aviso en este teléfono cuando:', granted: sub ? 'Este teléfono recibe avisos cuando:' : 'Diste permiso, pero falta conectar este teléfono.' }[estado];
+  const lista = S.admin || S.supervisor ? '<li>Un empleado pide vacaciones, permiso, horas extra, adelanto o constancia</li><li>Alguien olvidó marcar y pide que se registre</li>' : '';
+  const h = hoja('Notificaciones', `<p class="muted" style="margin:0 0 8px">${txt}</p>
+    ${['default', 'granted'].includes(estado) ? `<ul class="small" style="margin:0 0 14px;padding-left:18px">${lista}<li>Se carga tu comprobante de pago</li><li>Te aprueban o rechazan una solicitud</li><li>Te entregan un adelanto</li></ul>` : ''}
+    <div class="pie">${estado === 'granted' && sub ? '<button class="btn borde" data-off>Desactivar aquí</button><button class="btn pri" data-test>Enviar prueba</button>' : ['default', 'granted'].includes(estado) ? '<button class="btn pri" data-on>Activar notificaciones</button>' : ''}</div>`);
+  $('[data-on]', h.el) && ($('[data-on]', h.el).onclick = async () => { try { await activarPush(); h.cerrar(); toast('Notificaciones activadas'); misNotificaciones(); } catch (e) { toast(errMsg(e), true); } });
+  $('[data-test]', h.el) && ($('[data-test]', h.el).onclick = async () => { try { const r = await fnPush({ prueba: true }); toast(r.enviados ? 'Aviso de prueba enviado' : 'No se pudo entregar; vuelve a activarlas', !r.enviados); } catch (e) { toast(errMsg(e), true); } });
+  $('[data-off]', h.el) && ($('[data-off]', h.el).onclick = async () => { await soltarPush(); try { await sub.unsubscribe(); } catch (_) { } h.cerrar(); toast('Este teléfono ya no recibirá avisos'); });
+}
+window.misNotificaciones = misNotificaciones;
+
 /* ===================== shell + router ===================== */
 function navItems() {
   const it = [];
@@ -941,9 +1008,9 @@ function shell(html) {
   <div class="shell">
     <aside class="side" id="side"><div class="side-top"><div>${appMarca()}<div class="marca-sub" style="margin:8px 8px 20px;font-size:12px">${esc(empNombre())}</div></div><button class="side-x" id="sidex" aria-label="Cerrar menú">×</button></div>
       <nav class="nav">${items.map(([href, t, ic, g], i) => `${(S.admin || S.supervisor) && S.yo && g !== items[i - 1]?.[3] ? `<div class="nav-g">${g}</div>` : ''}<a href="${href}" class="${on(href)}">${ic}<span>${t}</span>${href === '#/solicitudes' ? '<b class="badge hidden" data-badge></b>' : ''}</a>`).join('')}</nav>
-      <div class="side-pie"><span>${esc(nom)}</span><button data-instalar ${promptInstalar ? '' : 'hidden'} onclick="instalarApp()">Instalar app</button><button onclick="miSeguridad()">PIN y huella</button><button onclick="cambiarMiClave()">Cambiar contraseña</button><button onclick="salir()">Cerrar sesión</button></div>
+      <div class="side-pie"><span>${esc(nom)}</span><button data-instalar ${promptInstalar ? '' : 'hidden'} onclick="instalarApp()">Instalar app</button><button onclick="misNotificaciones()">Notificaciones</button><button onclick="miSeguridad()">PIN y huella</button><button onclick="cambiarMiClave()">Cambiar contraseña</button><button onclick="salir()">Cerrar sesión</button></div>
     </aside>
-    <main id="main">${bandaSuscripcion()}${html}</main>
+    <main id="main">${bandaSuscripcion()}${bandaPush()}${html}</main>
   </div>
   <nav class="bottom">${abajo.map(([href, t, ic]) => `<a href="${href}" class="${on(href)}">${ic}<span>${CORTO[t] || t}</span>${href === '#/solicitudes' ? '<b class="badge hidden" data-badge></b>' : ''}</a>`).join('')}</nav>`;
   const side = $('#side'), velo = $('#sidevelo'), hamb = $('#hamb');
@@ -953,6 +1020,7 @@ function shell(html) {
   $('#sidex').onclick = () => abrir(false);
   $$('a', side).forEach(a => a.addEventListener('click', () => abrir(false)));
   document.body.classList.remove('menu-abierto');
+  enlazarBandaPush($('#main'));
   if (S.admin || S.supervisor) refrescarBadge();
   if (S.yo) recordatorioMarcaje($('#main'));
   return $('#main');
@@ -4002,7 +4070,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '52';
+const APP_VERSION = '53';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
