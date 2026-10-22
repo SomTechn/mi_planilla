@@ -3151,12 +3151,13 @@ async function vMisVacaciones() {
   const m = shell(`<div class="miga"><a href="#/mis-solicitudes">Mis solicitudes</a></div><div class="top"><div><h1>Vacaciones</h1><div class="muted small">Puedes pedir los días que vas acumulando, sin esperar tu aniversario (10 días el primer año, 12 el segundo, 15 el tercero y 20 desde el cuarto)</div></div></div>
     ${htmlResumenVac(r)}
     <div class="panel" style="margin-top:14px"><form id="fv" style="display:grid;gap:12px"><h3>Solicitar vacaciones</h3>
-      <div class="row2"><label class="f">Desde<input class="inp" type="date" name="desde" min="${iso(hoyHN())}" required></label><label class="f">Hasta<input class="inp" type="date" name="hasta" min="${iso(hoyHN())}" required></label></div>
+      <div class="row2"><label class="f">Desde<input class="inp" type="date" name="desde" min="${minFechaSol()}" required></label><label class="f">Hasta<input class="inp" type="date" name="hasta" min="${minFechaSol()}" required></label></div>
+      <div class="tiny muted" style="margin-top:-6px">Puedes pedir días de hasta ${DIAS_ATRAS_SOL} días atrás.</div>
       <div class="small muted" id="cuenta">Elige las fechas. No cuentan domingos ni feriados.</div>
       <label class="f">Comentario (opcional)<input class="inp" name="nota"></label>
       <button class="btn pri">Solicitar vacaciones</button></form></div>
     <h2 style="margin:22px 0 10px">Mis solicitudes</h2>
-    ${mis.filter(v => v.tipo === 'solicitud').length ? `<div class="lista">${mis.filter(v => v.tipo === 'solicitud').map(v => `<div class="item" style="cursor:default"><div class="grow"><div class="t">${fc(v.desde)} al ${fc(v.hasta)}</div><div class="s">${N(v.dias)} días${v.respuesta ? ' · ' + esc(v.respuesta) : ''}</div></div>${chipEstado(v.estado)}${v.estado === 'pendiente' ? `<button class="btn sm rojo" data-c="${v.id}">Cancelar</button>` : ''}</div>`).join('')}</div>` : '<div class="vacio">Aún no has solicitado vacaciones.</div>'}`);
+    ${mis.filter(v => v.tipo === 'solicitud').length ? `<div class="lista">${mis.filter(v => v.tipo === 'solicitud').map(v => `<div class="item" style="cursor:default"><div class="grow"><div class="t">${fc(v.desde)} al ${fc(v.hasta)}</div><div class="s">${N(v.dias)} días${v.respuesta ? ' · ' + esc(v.respuesta) : ''}</div></div><div class="sol-acc">${chipEstado(v.estado)}${v.estado === 'pendiente' ? `<button class="btn sm borde" data-ed="${v.id}">Editar</button><button class="btn sm rojo" data-c="${v.id}">Cancelar</button>` : ''}</div></div>`).join('')}</div>` : '<div class="vacio">Aún no has solicitado vacaciones.</div>'}`);
   const f = $('#fv', m);
   const disp = +(r.disponible_pedir ?? 0);
   const upd = () => { const n = habilesAprox(f.desde.value, f.hasta.value); const pasa = n > disp; $('#cuenta', m).innerHTML = n ? `Aproximadamente ${n} días laborables (sin domingos; los feriados no cuentan).${pasa ? ` <b style="color:var(--rojo)">Solo tienes ${N(disp)} días disponibles.</b>` : ''}` : `Elige las fechas. Tienes ${N(disp)} días disponibles.`; $('button.pri', f).disabled = !disp || pasa; };
@@ -3164,6 +3165,7 @@ async function vMisVacaciones() {
   f.hasta.onchange = upd; upd();
   f.onsubmit = async e => { e.preventDefault(); const x = formData(f); try { const res = await q(sb.rpc('pl_solicitar_vacaciones', { p_desde: x.desde, p_hasta: x.hasta, p_nota: x.nota || null })); toast(`Solicitud enviada: ${res.dias} días`); location.hash = '#/mis-solicitudes'; } catch (er) { toast(errMsg(er), true); } };
   $$('[data-c]', m).forEach(b => b.onclick = async () => { try { await q(sb.rpc('pl_cancelar_vacaciones', { p_id: b.dataset.c })); toast('Solicitud cancelada'); vMisVacaciones(); } catch (er) { toast(errMsg(er), true); } });
+  $$('[data-ed]', m).forEach(b => b.onclick = () => editarSolicitud('vac', mis.find(v => v.id === b.dataset.ed), vMisVacaciones));
 }
 
 /* ===================== EMPLEADO: odómetro ===================== */
@@ -3317,13 +3319,13 @@ async function vMisPermisos() {
       <div class="segm" data-g><button type="button" class="on" data-v="1">Con goce de salario</button><button type="button" data-v="0">Sin goce de salario</button></div>
       <div class="segm" data-d><button type="button" class="on" data-v="dia">Días completos</button><button type="button" data-v="horas">Unas horas</button></div>
       <input type="hidden" name="goce" value="1"><input type="hidden" name="modo" value="dia">
-      <div class="row2"><label class="f" id="ldesde">Desde<input class="inp" type="date" name="desde" min="${iso(hoyHN())}" required></label><label class="f" id="lhasta">Hasta<input class="inp" type="date" name="hasta" min="${iso(hoyHN())}"></label>
+      <div class="row2"><label class="f" id="ldesde">Desde<input class="inp" type="date" name="desde" min="${minFechaSol()}" required></label><label class="f" id="lhasta">Hasta<input class="inp" type="date" name="hasta" min="${minFechaSol()}"></label>
         <label class="f hidden" id="lhoras">Horas<input class="inp" type="number" name="horas" min="0.5" max="7.5" step="0.5"></label></div>
       <label class="f">Motivo<input class="inp" name="motivo" required placeholder="Ej.: cita médica, trámite en el RNP"></label>
-      <p class="small muted" style="margin:0">La gerencia decide si el permiso es con o sin goce al aprobarlo.</p>
+      <p class="small muted" style="margin:0">La gerencia decide si el permiso es con o sin goce al aprobarlo. Puedes pedir permisos de hasta ${DIAS_ATRAS_SOL} días atrás.</p>
       <button class="btn pri">Solicitar permiso</button></form></div>
     <h2 style="margin:22px 0 10px">Mis permisos</h2>
-    ${mis.length ? `<div class="lista">${mis.map(p => `<div class="item" style="cursor:default"><div class="grow"><div class="t">${rangoPermiso(p)}</div><div class="s">${tipoPermiso(p)} · ${esc(p.motivo)}${p.respuesta ? ' · ' + esc(p.respuesta) : ''}</div></div>${chipEstado(p.estado)}${p.estado === 'pendiente' ? `<button class="btn sm rojo" data-c="${p.id}">Cancelar</button>` : ''}</div>`).join('')}</div>` : '<div class="vacio">Aún no has solicitado permisos.</div>'}`);
+    ${mis.length ? `<div class="lista">${mis.map(p => `<div class="item" style="cursor:default"><div class="grow"><div class="t">${rangoPermiso(p)}</div><div class="s">${tipoPermiso(p)} · ${esc(p.motivo)}${p.respuesta ? ' · ' + esc(p.respuesta) : ''}</div></div><div class="sol-acc">${chipEstado(p.estado)}${p.estado === 'pendiente' ? `<button class="btn sm borde" data-ed="${p.id}">Editar</button><button class="btn sm rojo" data-c="${p.id}">Cancelar</button>` : ''}</div></div>`).join('')}</div>` : '<div class="vacio">Aún no has solicitado permisos.</div>'}`);
   const f = $('#fp', m);
   $$('[data-g] button', m).forEach(b => b.onclick = () => { $$('[data-g] button', m).forEach(x => x.classList.toggle('on', x === b)); f.goce.value = b.dataset.v; });
   $$('[data-d] button', m).forEach(b => b.onclick = () => { $$('[data-d] button', m).forEach(x => x.classList.toggle('on', x === b)); f.modo.value = b.dataset.v; const h = b.dataset.v === 'horas'; $('#lhasta', m).classList.toggle('hidden', h); $('#lhoras', m).classList.toggle('hidden', !h); $('#ldesde', m).firstChild.textContent = h ? 'Fecha' : 'Desde'; f.horas.required = h; });
@@ -3333,6 +3335,7 @@ async function vMisPermisos() {
     try { const r = await q(sb.rpc('pl_solicitar_permiso', { p_goce: x.goce === '1', p_desde: x.desde, p_hasta: horas ? x.desde : (x.hasta || x.desde), p_horas: horas, p_motivo: x.motivo })); toast(`Permiso solicitado${horas ? '' : `: ${N(r.dias)} día(s)`}`); location.hash = '#/mis-solicitudes'; } catch (er) { toast(errMsg(er), true); }
   };
   $$('[data-c]', m).forEach(b => b.onclick = async () => { try { await q(sb.rpc('pl_cancelar_permiso', { p_id: b.dataset.c })); toast('Permiso cancelado'); vMisPermisos(); } catch (er) { toast(errMsg(er), true); } });
+  $$('[data-ed]', m).forEach(b => b.onclick = () => editarSolicitud('perm', mis.find(p => p.id === b.dataset.ed), vMisPermisos));
 }
 function resolverPermiso(p, aprobar, despues) {
   const h = hoja(aprobar ? 'Aprobar permiso' : 'Rechazar permiso', `<form><p class="small muted" style="margin:0">${esc(p.pl_empleados?.nombre || '')} · ${rangoPermiso(p)} · ${esc(p.motivo)}</p>
@@ -3498,6 +3501,9 @@ async function vMisSolicitudes() {
 }
 
 /* ===================== EDITAR / CANCELAR solicitudes pendientes ===================== */
+// vacaciones y permisos se pueden pedir (o corregir) hasta 7 días hacia atrás
+const DIAS_ATRAS_SOL = 7;
+const minFechaSol = () => addDias(iso(hoyHN()), -DIAS_ATRAS_SOL);
 const cancelarSolicitud = (t, id) => q(sb.rpc({ adelanto: 'pl_cancelar_adelanto', vac: 'pl_cancelar_vacaciones', perm: 'pl_cancelar_permiso', horas: 'pl_cancelar_horas', cons: 'pl_cancelar_constancia' }[t], { p_id: id }));
 function editarSolicitud(t, r, despues) {
   const hoy = iso(hoyHN());
@@ -3506,10 +3512,10 @@ function editarSolicitud(t, r, despues) {
     adelanto: `<p class="small muted" style="margin:0">Adelanto de ${r.tipo === 'comisiones' ? 'comisiones' : 'salario'}.</p>
       <label class="f">Monto (L)<input class="inp" type="number" name="monto" min="1" step="1" value="${Math.round(r.monto_solicitado || r.monto)}" required inputmode="numeric"></label>
       <label class="f">Motivo (opcional)<input class="inp" name="nota" value="${esc(/^Adelanto de/.test(r.descripcion || '') ? '' : (r.descripcion || ''))}"></label>`,
-    vac: `<div class="row2"><label class="f">Desde<input class="inp" type="date" name="desde" min="${hoy}" value="${r.desde}" required></label><label class="f">Hasta<input class="inp" type="date" name="hasta" min="${hoy}" value="${r.hasta}" required></label></div>
+    vac: `<div class="row2"><label class="f">Desde<input class="inp" type="date" name="desde" min="${minFechaSol()}" value="${r.desde}" required></label><label class="f">Hasta<input class="inp" type="date" name="hasta" min="${minFechaSol()}" value="${r.hasta}" required></label></div>
       <label class="f">Comentario (opcional)<input class="inp" name="nota" value="${esc(r.nota || '')}"></label>`,
     perm: `${seg('goce', [[1, 'Con goce'], [0, 'Sin goce']], r.goce ? 1 : 0)}
-      <div class="row2"><label class="f">Desde<input class="inp" type="date" name="desde" min="${hoy}" value="${r.desde}" required></label><label class="f">Hasta<input class="inp" type="date" name="hasta" min="${hoy}" value="${r.hasta || r.desde}"></label></div>
+      <div class="row2"><label class="f">Desde<input class="inp" type="date" name="desde" min="${minFechaSol()}" value="${r.desde}" required></label><label class="f">Hasta<input class="inp" type="date" name="hasta" min="${minFechaSol()}" value="${r.hasta || r.desde}"></label></div>
       <label class="f">Horas (solo si es parte de un día)<input class="inp" type="number" name="horas" min="0.5" max="7.5" step="0.5" value="${r.horas ?? ''}"></label>
       <label class="f">Motivo<input class="inp" name="motivo" value="${esc(r.motivo || '')}" required></label>`,
     horas: r.tipo === 'extra' ? `<label class="f">Fecha<input class="inp" type="date" name="fecha" value="${r.fecha}" max="${hoy}" required></label>
@@ -4070,7 +4076,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '53';
+const APP_VERSION = '54';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
