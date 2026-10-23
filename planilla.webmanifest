@@ -1,7 +1,7 @@
 {
   "name": "Mi Planilla",
   "short_name": "Mi Planilla",
-  "description": "Mi Planilla · pagos, solicitudes, marcaje y comprobantes · Somar Ecosystem",
+  "description": "Mi Planilla · pagos, solicitudes, marcaje y comprobantes · Somar Labs",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
