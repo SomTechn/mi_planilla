@@ -508,7 +508,7 @@ button.lnk{background:none;border:0;padding:0;color:var(--azul2);font-weight:600
 .lp-trampa{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 .login-alta{text-align:center;color:#AFC6F0;font-size:14px;margin:18px 0 0}.login-alta a{color:var(--amarillo);font-weight:600}
 .susc-banda{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#FFF6CC;color:#5C4700;border-radius:var(--r-m);padding:10px 14px;margin-bottom:16px;font-size:14px}
-.push-banda{background:var(--suave);color:var(--tinta)}.push-banda .acc{display:flex;gap:8px}
+.push-banda,.info-banda{background:var(--suave);color:var(--tinta)}.push-banda .acc{display:flex;gap:8px}
 .susc-banda.mal{background:#FDECEC;color:var(--rojo)}
 .susc-banda a{font-weight:700;color:inherit}
 </style>
@@ -679,7 +679,7 @@ const soloDigitos = s => String(s || '').replace(/\D/g, '');
 const waLink = (tel, txt) => { const d = soloDigitos(tel); return d ? `https://wa.me/${d.length === 8 ? '504' + d : d}?text=${encodeURIComponent(txt)}` : ''; };
 // plan sin límite ni precio fijo (ej. Personalizado): se cotiza
 const aCotizar = p => !p.max_empleados && !+p.precio_mensual;
-const precioPlan = p => +p.precio_mensual ? `${L(p.precio_mensual).replace('.00', '')}<span>/mes</span>` : aCotizar(p) ? 'A tu medida' : 'Gratis';
+const precioPlan = p => +p.precio_mensual ? `${L(p.precio_mensual).replace('.00', '')}<span>/mes</span>` : 'A tu medida';   // nunca "Gratis": un plan sin precio se cotiza
 const limitePlan = p => p.max_empleados ? `Hasta ${p.max_empleados} colaboradores` : (String(p.descripcion || '').split('·')[0].trim() || 'Colaboradores sin límite');
 let plataformaCache = null;
 async function plataforma() {
@@ -712,8 +712,8 @@ const LP_FUNCIONES = [
 function botonCotizar(p, cfg) {
   const txt = `Hola, quiero cotizar el plan ${p.nombre} de Mi Planilla para mi empresa.`;
   const wa = waLink(cfg.ventas_whatsapp, txt);
-  const href = wa || (cfg.ventas_correo ? `mailto:${cfg.ventas_correo}?subject=${encodeURIComponent('Cotización Mi Planilla')}&body=${encodeURIComponent(txt)}` : '#/registro');
-  return `<a class="btn borde" href="${esc(href)}" ${wa ? 'target="_blank" rel="noopener"' : ''}>${wa ? ICON.wa : ''}Cotizar</a>`;
+  // sin WhatsApp: crea su cuenta de prueba y pide la cotización desde Suscripción
+  return wa ? `<a class="btn borde" href="${esc(wa)}" target="_blank" rel="noopener">${ICON.wa}Cotizar</a>` : '<a class="btn borde" href="#/registro">Solicitar cotización</a>';
 }
 
 async function pintarInicio() {
@@ -819,26 +819,138 @@ async function vSuscripcion() {
   cargando();
   const [susc, { planes, cfg }] = await Promise.all([q(sb.rpc('pl_mi_suscripcion')), plataforma()]);
   S.susc = susc;
-  const e = susc.empresa, max = susc.max_empleados;
+  const e = susc.empresa, max = susc.max_empleados, reps = susc.reportes || [];
   const est = !susc.vigente ? '<span class="chip red">Vencida · solo lectura</span>' : e.estado === 'prueba' ? '<span class="chip warn">Prueba gratis</span>' : '<span class="chip ok">Activa</span>';
-  const msg = p => aCotizar(p) ? `Hola, quiero cotizar el plan ${p.nombre} de Mi Planilla. Empresa: ${e.nombre}, ${susc.empleados} colaboradores activos.`
-    : `Hola, quiero ${e.estado === 'prueba' ? 'contratar' : 'renovar'} Mi Planilla. Empresa: ${e.nombre}. Plan: ${p.nombre} (${L(p.precio_mensual)}/mes).`;
-  const datosPago = [['Banco', cfg.pago_banco], ['Cuenta', cfg.pago_cuenta], ['A nombre de', cfg.pago_titular]].filter(x => x[1]);
-  const m = shell(`<div class="top"><div><h1>Suscripción</h1><div class="muted small">${esc(e.nombre)}</div></div></div>
+  const cuenta = [['Banco', cfg.pago_banco], ['Tipo de cuenta', cfg.pago_tipo_cuenta], ['Número de cuenta', cfg.pago_cuenta], ['A nombre de', cfg.pago_titular]].filter(x => x[1]);
+  const porConfirmar = reps.filter(r => r.tipo === 'pago' && r.estado === 'pendiente');
+  const nombrePlan = c => planes.find(p => p.codigo === c)?.nombre || c || '';
+  const estadoRep = r => r.estado === 'pendiente' ? `<span class="chip warn">${r.tipo === 'pago' ? 'Por confirmar' : 'En proceso'}</span>`
+    : r.estado === 'aprobado' ? `<span class="chip ok">${r.tipo === 'pago' ? 'Confirmado' : 'Atendida'}</span>` : r.estado === 'rechazado' ? '<span class="chip red">No confirmado</span>' : '<span class="chip gris">Cancelado</span>';
+  const m = shell(`<div class="top"><div><h1>Suscripción</h1><div class="muted small">${esc(e.nombre)}</div></div>${cuenta.length ? '<div class="acc"><button class="btn pri" data-reportar>Reportar transferencia</button></div>' : ''}</div>
+    ${porConfirmar.length ? `<div class="susc-banda info-banda"><span>🏦 Recibimos tu transferencia del ${fc(porConfirmar[0].fecha_transferencia)} por ${L(porConfirmar[0].monto)}. La estamos confirmando; te avisaremos cuando quede aplicada.</span></div>` : ''}
     <div class="totales"><div><div class="k">Plan</div><div class="v">${esc(susc.plan?.nombre || e.plan)}</div></div><div><div class="k">Estado</div><div class="v" style="font-size:15px;padding-top:4px">${est}</div></div>
       <div><div class="k">${e.vence_en ? (susc.dias < 0 ? 'Venció' : 'Vence') : 'Vencimiento'}</div><div class="v" style="font-size:17px">${e.vence_en ? fc(e.vence_en) : 'Sin vencimiento'}</div></div>
       <div class="${max && susc.empleados >= max ? 'neto' : ''}"><div class="k">Colaboradores activos</div><div class="v">${susc.empleados}${max ? ` <span class="muted" style="font-size:14px">de ${max}</span>` : ''}</div></div></div>
-    <div class="panel" style="margin-bottom:16px"><h3 style="margin-bottom:6px">Cómo pagar</h3><p class="muted small" style="margin:0 0 10px">${esc(cfg.pago_instrucciones || 'Contáctanos para renovar tu plan.')}</p>
-      ${datosPago.length ? `<div class="lp-pago">${datosPago.map(([k, v]) => `<div><span class="tiny muted">${k}</span><b>${esc(v)}</b></div>`).join('')}</div>` : ''}
-      <p class="small muted" style="margin:10px 0 0">Al confirmar tu pago activamos o extendemos tu plan el mismo día.</p></div>
+    <div class="panel" style="margin-bottom:16px"><h3 style="margin-bottom:6px">Paga con transferencia</h3>
+      ${cuenta.length ? `<p class="muted small" style="margin:0 0 12px">1. Transfiere el monto de tu plan a esta cuenta. 2. Toca <b>Reportar transferencia</b> y sube la foto del comprobante. 3. Al confirmarla activamos o extendemos tu plan y te llega un aviso.</p>
+        <div class="lp-pago">${cuenta.map(([k, v]) => `<div><span class="tiny muted">${k}</span><b>${esc(v)}${k === 'Número de cuenta' ? btnCopiar(v, 'Copiar número de cuenta') : ''}</b></div>`).join('')}</div>
+        ${cfg.pago_instrucciones ? `<p class="small muted" style="margin:10px 0 0">${esc(cfg.pago_instrucciones)}</p>` : ''}`
+      : '<p class="muted small" style="margin:0">Pronto publicaremos aquí la cuenta para transferir. Mientras tanto, tu prueba sigue activa.</p>'}</div>
     <h3 style="margin:0 0 10px">Planes</h3>
-    <div class="lp-planes in">${planes.filter(p => p.publico || p.codigo === e.plan).map(p => { const wa = waLink(cfg.ventas_whatsapp, msg(p)); const muchos = p.max_empleados && susc.empleados > p.max_empleados;
-      return `<div class="lp-plan ${p.codigo === e.plan ? 'dest' : ''}">${p.codigo === e.plan ? '<div class="chip">Tu plan</div>' : ''}<h3>${esc(p.nombre)}</h3><div class="lp-precio">${precioPlan(p)}</div><div class="muted small">${limitePlan(p)}</div>
-        ${muchos ? '<div class="tiny" style="color:var(--rojo)">Tienes más colaboradores activos que este límite</div>' : wa ? `<a class="btn ${p.codigo === e.plan ? 'pri' : 'borde'} sm" href="${wa}" target="_blank" rel="noopener">${ICON.wa}${p.codigo === e.plan ? 'Pagar este plan' : aCotizar(p) ? 'Cotizar' : 'Elegir este plan'}</a>` : ''}</div>`; }).join('')}</div>
-    ${(susc.pagos || []).length ? `<h3 style="margin:20px 0 10px">Pagos registrados</h3><div class="tscroll"><table class="t"><thead><tr><th>Fecha</th><th>Plan</th><th class="r">Meses</th><th class="r">Monto</th><th>Cubre hasta</th></tr></thead><tbody>
-      ${susc.pagos.map(p => `<tr><td>${fc(p.fecha)}</td><td>${esc(planes.find(x => x.codigo === p.plan)?.nombre || p.plan || '')}</td><td class="r">${p.meses}</td><td class="r">${L(p.monto)}</td><td>${fc(p.vence_despues)}</td></tr>`).join('')}</tbody></table></div>` : ''}`);
+    <div class="lp-planes in">${planes.filter(p => p.publico || p.codigo === e.plan).map(p => { const muchos = p.max_empleados && susc.empleados > p.max_empleados; const tuyo = p.codigo === e.plan;
+      return `<div class="lp-plan ${tuyo ? 'dest' : ''}">${tuyo ? '<div class="chip">Tu plan</div>' : ''}<h3>${esc(p.nombre)}</h3><div class="lp-precio">${precioPlan(p)}</div><div class="muted small">${limitePlan(p)}</div>
+        ${aCotizar(p) ? `<button class="btn ${tuyo ? 'pri' : 'borde'} sm" data-cotizar>${tuyo && +susc.max_empleados ? 'Pedir ajuste' : 'Solicitar cotización'}</button>`
+          : muchos ? '<div class="tiny" style="color:var(--rojo)">Tienes más colaboradores activos que este límite</div>'
+          : cuenta.length ? `<button class="btn ${tuyo ? 'pri' : 'borde'} sm" data-plan="${p.codigo}">${tuyo ? 'Pagar este plan' : 'Cambiar a este plan'}</button>` : ''}</div>`; }).join('')}</div>
+    ${reps.length ? `<h3 style="margin:20px 0 10px">Tus reportes</h3><div class="lista">${reps.map(r => `<div class="item" style="cursor:default"><div class="grow">
+        <div class="t">${r.tipo === 'pago' ? `Transferencia de ${L(r.monto)} · ${esc(nombrePlan(r.plan))} · ${r.meses} mes${r.meses > 1 ? 'es' : ''}` : `Cotización para ${r.colaboradores} colaboradores`}</div>
+        <div class="s">${r.tipo === 'pago' ? `${fc(r.fecha_transferencia)}${r.banco_origen ? ' · ' + esc(r.banco_origen) : ''} · Ref. ${esc(r.referencia)}` : esc(r.nota || '')}</div>
+        ${r.respuesta ? `<div class="tiny muted">${esc(r.respuesta)}</div>` : ''}<div class="tiny muted">Enviado ${fdt(r.reportado_en)}</div></div>
+        <div class="sol-acc">${estadoRep(r)}${r.estado === 'pendiente' ? `<button class="btn sm rojo" data-cancelar="${r.id}">Cancelar</button>` : ''}</div></div>`).join('')}</div>` : ''}
+    ${(susc.pagos || []).length ? `<h3 style="margin:20px 0 10px">Pagos aplicados</h3><div class="tscroll"><table class="t"><thead><tr><th>Fecha</th><th>Plan</th><th class="r">Meses</th><th class="r">Monto</th><th>Cubre hasta</th></tr></thead><tbody>
+      ${susc.pagos.map(p => `<tr><td>${fc(p.fecha)}</td><td>${esc(nombrePlan(p.plan))}</td><td class="r">${p.meses}</td><td class="r">${L(p.monto)}</td><td>${fc(p.vence_despues)}</td></tr>`).join('')}</tbody></table></div>` : ''}`);
+  const planPago = planes.find(p => p.codigo === e.plan && !aCotizar(p)) ? e.plan : (planes.find(p => p.publico && !aCotizar(p) && (!p.max_empleados || p.max_empleados >= susc.empleados))?.codigo || '');
+  $$('[data-reportar]', m).forEach(b => b.onclick = () => reportarTransferencia(planPago, planes, cuenta, e));
+  $$('[data-plan]', m).forEach(b => b.onclick = () => reportarTransferencia(b.dataset.plan, planes, cuenta, e));
+  $$('[data-cotizar]', m).forEach(b => b.onclick = () => solicitarCotizacion(susc.empleados));
+  $$('[data-cancelar]', m).forEach(b => b.onclick = async () => {
+    if (!await confirmar('Cancelar reporte', 'El reporte se retira y ya no lo revisaremos. Puedes enviar uno nuevo cuando quieras.', 'Cancelar reporte', true)) return;
+    try { await q(sb.rpc('pl_cancelar_reporte', { p_id: b.dataset.cancelar })); toast('Reporte cancelado'); vSuscripcion(); } catch (er) { toast(errMsg(er), true); }
+  });
   return m;
 }
+
+function reportarTransferencia(plan, planes, cuenta, emp) {
+  const opciones = planes.filter(p => !aCotizar(p) && (p.publico || p.codigo === plan));
+  const precio = c => +(planes.find(p => p.codigo === c)?.precio_mensual || 0);
+  const h = hoja('Reportar transferencia', `<form style="display:grid;gap:12px">
+    <div class="lp-pago" style="background:var(--suave);border-radius:12px;padding:10px 12px">${cuenta.map(([k, v]) => `<div><span class="tiny muted">${k}</span><b>${esc(v)}${k === 'Número de cuenta' ? btnCopiar(v, 'Copiar número de cuenta') : ''}</b></div>`).join('')}</div>
+    <label class="f">Plan<select class="inp" name="plan">${opciones.map(p => `<option value="${p.codigo}" ${p.codigo === plan ? 'selected' : ''}>${esc(p.nombre)} · ${L(p.precio_mensual).replace('.00', '')}/mes · ${limitePlan(p).toLowerCase()}</option>`).join('')}</select></label>
+    <div class="row2"><label class="f">Meses que pagas<select class="inp" name="meses">${[1, 2, 3, 6, 12].map(n => `<option value="${n}">${n} ${n > 1 ? 'meses' : 'mes'}</option>`).join('')}</select></label>
+      <label class="f">Monto (L)<input class="inp" type="number" step="0.01" min="1" name="monto" required inputmode="decimal"></label></div>
+    <div class="row2"><label class="f">Fecha<input class="inp" type="date" name="fecha" value="${iso(hoyHN())}" max="${iso(hoyHN())}" required></label>
+      <label class="f">N.º de referencia<input class="inp" name="referencia" required placeholder="Del comprobante"></label></div>
+    <label class="f">Banco desde el que pagaste<input class="inp" name="banco" placeholder="Ej.: BAC, Atlántida, Ficohsa, Banpaís"></label>
+    <label class="f">Foto o PDF del comprobante<input class="inp" type="file" name="archivo" accept="image/*,application/pdf" required></label>
+    <label class="f">Nota (opcional)<input class="inp" name="nota"></label>
+    <p class="tiny muted" style="margin:0">Revisamos la transferencia y, al confirmarla, tu plan se extiende desde ${emp.vence_en && pf(emp.vence_en) > hoyHN() ? `el ${fc(emp.vence_en)}` : 'hoy'}. Te llegará un aviso.</p>
+    <div class="pie"><button class="btn pri">Enviar reporte</button></div></form>`);
+  const f = $('form', h.el);
+  const total = () => { f.monto.value = precio(f.plan.value) * (+f.meses.value || 1) || ''; };
+  f.plan.onchange = total; f.meses.onchange = total; total();
+  f.onsubmit = async ev => {
+    ev.preventDefault(); const x = formData(f), arch = f.archivo.files[0], b = $('button.pri', f);
+    if (arch && arch.size > 5 * 1024 * 1024) return toast('El comprobante pesa más de 5 MB; envía una foto más liviana', true);
+    b.disabled = true; b.textContent = 'Enviando…';
+    try {
+      let ruta = null;
+      if (arch) {
+        const ext = (arch.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'jpg';
+        ruta = `${emp.id}/${Date.now()}.${ext}`;
+        const up = await sb.storage.from('pl-suscripcion').upload(ruta, arch, { contentType: arch.type || undefined, upsert: false });
+        if (up.error) throw up.error;
+      }
+      await q(sb.rpc('pl_reportar_pago', { p_plan: x.plan, p_meses: +x.meses, p_monto: +x.monto, p_fecha: x.fecha, p_banco: x.banco, p_referencia: x.referencia, p_nota: x.nota || null, p_comprobante: ruta }));
+      h.cerrar(); toast('Reporte enviado. Te avisaremos al confirmarlo.'); vSuscripcion();
+    } catch (er) { b.disabled = false; b.textContent = 'Enviar reporte'; toast(errMsg(er), true); }
+  };
+}
+
+function solicitarCotizacion(actuales) {
+  const h = hoja('Solicitar cotización', `<form style="display:grid;gap:12px">
+    <p class="small muted" style="margin:0">Para empresas con más de 30 colaboradores preparamos un precio a tu medida. Te contactamos al correo y teléfono con que registraste tu empresa.</p>
+    <label class="f">¿Cuántos colaboradores tendrás en la app?<input class="inp" type="number" name="n" min="1" value="${Math.max(31, actuales || 0)}" required></label>
+    <label class="f">Comentario (opcional)<input class="inp" name="nota" placeholder="Ej.: tenemos dos sucursales"></label>
+    <div class="pie"><button class="btn pri">Enviar solicitud</button></div></form>`);
+  $('form', h.el).onsubmit = async ev => {
+    ev.preventDefault(); const x = formData(ev.target);
+    try { await q(sb.rpc('pl_solicitar_cotizacion', { p_colaboradores: +x.n, p_nota: x.nota || null })); h.cerrar(); toast('Solicitud enviada. Te contactaremos pronto.'); vSuscripcion(); } catch (er) { toast(errMsg(er), true); }
+  };
+}
+
+// dueño del servicio: transferencias y cotizaciones por revisar
+async function seccionReportes(cont, planes) {
+  const reps = await q(sb.rpc('pl_sa_reportes'));
+  const pend = reps.filter(r => r.estado === 'pendiente');
+  const nombrePlan = c => planes.find(p => p.codigo === c)?.nombre || c || '';
+  const opPlanes = sel => planes.filter(p => !aCotizar(p) || p.codigo === sel).map(p => `<option value="${p.codigo}" ${p.codigo === sel ? 'selected' : ''}>${esc(p.nombre)}${aCotizar(p) ? '' : ' · ' + L(p.precio_mensual)}</option>`).join('');
+  cont.innerHTML = `<h2 style="margin:0 0 10px">Por revisar ${pend.length ? `<span class="chip warn">${pend.length}</span>` : ''}</h2>
+    ${pend.length ? `<div class="lista" style="margin-bottom:20px">${pend.map(r => `<div class="item" style="cursor:default;align-items:flex-start"><div class="grow">
+      <div class="t">${esc(r.empresa)} · ${r.tipo === 'pago' ? `Transferencia de ${L(r.monto)}` : `Cotización para ${r.colaboradores} colaboradores`}</div>
+      <div class="s">${r.tipo === 'pago' ? `${esc(nombrePlan(r.plan))} · ${r.meses} mes${r.meses > 1 ? 'es' : ''} · ${fc(r.fecha_transferencia)}${r.banco_origen ? ' · ' + esc(r.banco_origen) : ''} · Ref. ${esc(r.referencia)}`
+        : `Hoy tiene ${r.empleados} colaboradores · plan ${esc(nombrePlan(r.plan_actual))}`}</div>
+      <div class="tiny muted">${esc(r.contacto || '')}${r.correo ? ' · ' + esc(r.correo) : ''}${r.telefono ? ' · ' + esc(r.telefono) : ''}${r.nota ? ' · “' + esc(r.nota) + '”' : ''} · ${fdt(r.reportado_en)}</div></div>
+      <div class="sol-acc">${r.comprobante_path ? `<button class="btn sm borde" data-ver="${esc(r.comprobante_path)}">${ICON.foto}Comprobante</button>` : ''}
+        <button class="btn sm pri" data-ok="${r.id}">${r.tipo === 'pago' ? 'Confirmar' : 'Atendida'}</button>${r.tipo === 'pago' ? `<button class="btn sm rojo" data-no="${r.id}">Rechazar</button>` : ''}</div></div>`).join('')}</div>`
+    : '<div class="vacio" style="margin-bottom:20px;padding:20px"><b>Nada por revisar</b>Aquí aparecen las transferencias que reporten las empresas.</div>'}`;
+  $$('[data-ver]', cont).forEach(b => b.onclick = async () => {
+    const { data, error } = await sb.storage.from('pl-suscripcion').createSignedUrl(b.dataset.ver, 600);
+    if (error) return toast(errMsg(error), true);
+    window.open(data.signedUrl, '_blank', 'noopener');
+  });
+  $$('[data-ok]', cont).forEach(b => b.onclick = () => {
+    const r = reps.find(x => x.id === b.dataset.ok);
+    const h = hoja(r.tipo === 'pago' ? `Confirmar pago · ${r.empresa}` : `Cotización · ${r.empresa}`, `<form style="display:grid;gap:12px">
+      ${r.tipo === 'pago' ? `<p class="small muted" style="margin:0">Verifica en tu banco que entró la transferencia <b>${esc(r.referencia)}</b> por ${L(r.monto)} antes de confirmar.</p>
+        <div class="row2"><label class="f">Plan<select class="inp" name="plan">${opPlanes(r.plan)}</select></label><label class="f">Meses<input class="inp" type="number" name="meses" min="1" max="24" value="${r.meses}" required></label></div>
+        <label class="f">Monto recibido (L)<input class="inp" type="number" step="0.01" min="0" name="monto" value="${r.monto}" required></label>
+        <p class="tiny muted" style="margin:0">El plan se extiende desde ${r.vence_en && pf(r.vence_en) > hoyHN() ? `el ${fc(r.vence_en)}` : 'hoy'} y la empresa queda activa.</p>`
+      : `<p class="small muted" style="margin:0">Contacta a ${esc(r.contacto || 'la empresa')} con la propuesta. Después asigna el plan Personalizado con su límite en <b>Editar</b> y registra los pagos.</p>`}
+      <label class="f">Mensaje para la empresa (opcional)<input class="inp" name="resp" placeholder="${r.tipo === 'pago' ? '¡Gracias por tu pago!' : 'Te enviamos la propuesta a tu correo'}"></label>
+      <div class="pie"><button class="btn pri">${r.tipo === 'pago' ? 'Confirmar y aplicar' : 'Marcar como atendida'}</button></div></form>`);
+    $('form', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target);
+      try { const res = await q(sb.rpc('pl_sa_resolver_reporte', { p_id: r.id, p_aprobar: true, p_respuesta: x.resp || null, p_monto: x.monto ? +x.monto : null, p_meses: x.meses ? +x.meses : null, p_plan: x.plan || null }));
+        h.cerrar(); toast(res?.vence_en ? `Pago aplicado · vence ${fc(res.vence_en)}` : 'Listo'); vPlataforma(); } catch (er) { toast(errMsg(er), true); } };
+  });
+  $$('[data-no]', cont).forEach(b => b.onclick = () => {
+    const r = reps.find(x => x.id === b.dataset.no);
+    const h = hoja(`Rechazar pago · ${r.empresa}`, `<form style="display:grid;gap:12px"><label class="f">Motivo (lo verá la empresa)<input class="inp" name="resp" required placeholder="Ej.: no encontramos esa referencia en la cuenta"></label>
+      <div class="pie"><button class="btn rojo">Rechazar</button></div></form>`);
+    $('form', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target);
+      try { await q(sb.rpc('pl_sa_resolver_reporte', { p_id: r.id, p_aprobar: false, p_respuesta: x.resp })); h.cerrar(); toast('Reporte rechazado'); vPlataforma(); } catch (er) { toast(errMsg(er), true); } };
+  });
+}
+
 
 // panel del dueño del servicio: empresas, pagos y planes
 async function vPlataforma() {
@@ -851,13 +963,16 @@ async function vPlataforma() {
   const estado = e => e.principal ? '<span class="chip gris">Principal</span>' : !e.vigente ? `<span class="chip red">${e.estado === 'activa' || e.estado === 'prueba' ? 'Vencida' : esc(e.estado)}</span>` : e.estado === 'prueba' ? '<span class="chip warn">Prueba</span>' : '<span class="chip ok">Activa</span>';
   const m = shell(`<div class="top"><div><h1>Plataforma</h1><div class="muted small">Empresas que usan Mi Planilla</div></div><div class="acc"><button class="btn borde" id="cfg">${ICON.ajustes}Cobro y contacto</button><button class="btn borde" id="pln">Planes</button></div></div>
     <div class="totales"><div><div class="k">Activas</div><div class="v">${activas.length}</div></div><div><div class="k">En prueba</div><div class="v">${prueba.length}</div></div><div><div class="k">Vencidas</div><div class="v">${vencidas.length}</div></div><div class="neto"><div class="k">Ingreso mensual</div><div class="v">${L(activas.reduce((a, e) => a + precio(e.plan), 0))}</div></div></div>
+    <div id="reportes"></div>
+    <h2 style="margin:0 0 10px">Empresas</h2>
     <div class="tscroll"><table class="t"><thead><tr><th>Empresa</th><th>Estado</th><th>Plan</th><th>Vence</th><th class="r">Colab.</th><th>Admin</th><th>Contacto</th><th class="r">Pagado</th><th></th></tr></thead><tbody>
-    ${emps.map(e => `<tr><td><b>${esc(e.nombre)}</b><div class="tiny muted">Desde ${fc(e.creado_en)}</div></td><td>${estado(e)}</td><td>${esc(planes.find(p => p.codigo === e.plan)?.nombre || e.plan)}</td><td>${e.vence_en ? fc(e.vence_en) : '—'}</td>
+    ${emps.map(e => `<tr><td><b>${esc(e.nombre)}</b>${+e.reportes_pendientes ? ' <span class="chip warn">Por revisar</span>' : ''}<div class="tiny muted">Desde ${fc(e.creado_en)}</div></td><td>${estado(e)}</td><td>${esc(planes.find(p => p.codigo === e.plan)?.nombre || e.plan)}</td><td>${e.vence_en ? fc(e.vence_en) : '—'}</td>
       <td class="r">${e.empleados}${e.max_empleados ? `/${e.max_empleados}` : ''}</td><td class="small">${esc(e.admins || '')}</td><td class="small">${esc(e.contacto || '')}${e.telefono ? `<br>${waLink(e.telefono, '') ? `<a href="${waLink(e.telefono, `Hola ${e.contacto || ''}, te escribimos de Mi Planilla.`)}" target="_blank" rel="noopener">${esc(e.telefono)}</a>` : esc(e.telefono)}` : ''}</td>
       <td class="r">${L(e.total_pagado)}${e.ultimo_pago ? `<div class="tiny muted">${fc(e.ultimo_pago)}</div>` : ''}</td>
       <td style="white-space:nowrap">${e.principal ? '' : `<button class="btn sm pri" data-pago="${e.id}">Pago</button> <button class="btn sm borde" data-ed="${e.id}">Editar</button>`}</td></tr>`).join('')}
     </tbody></table></div>`);
-  const opPlanes = sel => planes.map(p => `<option value="${p.codigo}" ${p.codigo === sel ? 'selected' : ''}>${esc(p.nombre)} · ${L(p.precio_mensual)}</option>`).join('');
+  const opPlanes = sel => planes.map(p => `<option value="${p.codigo}" ${p.codigo === sel ? 'selected' : ''}>${esc(p.nombre)} · ${aCotizar(p) ? 'a cotizar' : L(p.precio_mensual)}</option>`).join('');
+  seccionReportes($('#reportes', m), planes).catch(er => { $('#reportes', m).innerHTML = `<div class="err">${esc(errMsg(er))}</div>`; });
   $$('[data-pago]', m).forEach(b => b.onclick = () => {
     const e = emps.find(x => x.id === b.dataset.pago);
     const h = hoja(`Registrar pago · ${e.nombre}`, `<form>
@@ -883,7 +998,7 @@ async function vPlataforma() {
       try { await q(sb.rpc('pl_sa_editar_empresa', { p_empresa: e.id, p_estado: x.estado, p_plan: x.plan, p_vence: x.vence || null, p_max: x.max ? +x.max : null, p_nota: x.nota })); h.cerrar(); toast('Empresa actualizada'); vPlataforma(); } catch (er) { toast(errMsg(er), true); } };
   });
   $('#cfg', m).onclick = () => {
-    const C = [['pago_instrucciones', 'Instrucciones de pago'], ['pago_banco', 'Banco'], ['pago_cuenta', 'Número de cuenta'], ['pago_titular', 'Cuenta a nombre de'], ['ventas_whatsapp', 'WhatsApp de ventas'], ['ventas_correo', 'Correo de ventas'], ['dias_prueba', 'Días de prueba gratis'], ['dias_gracia', 'Días de gracia después de vencer']];
+    const C = [['pago_instrucciones', 'Instrucciones de pago'], ['pago_banco', 'Banco'], ['pago_tipo_cuenta', 'Tipo de cuenta (ahorro, cheques…)'], ['pago_cuenta', 'Número de cuenta'], ['pago_titular', 'Cuenta a nombre de'], ['ventas_whatsapp', 'WhatsApp de ventas'], ['ventas_correo', 'Correo de ventas'], ['dias_prueba', 'Días de prueba gratis'], ['dias_gracia', 'Días de gracia después de vencer']];
     const h = hoja('Cobro y contacto', `<form>${C.map(([k, t]) => `<label class="f">${t}<input class="inp" name="${k}" value="${esc(cfg[k] || '')}" ${k.startsWith('dias') ? 'type="number" min="0"' : ''}></label>`).join('')}<p class="small muted" style="margin:0">Se muestra a las empresas en Suscripción y en la página de venta.</p><div class="pie"><button class="btn pri">Guardar</button></div></form>`);
     $('form', h.el).onsubmit = async ev => { ev.preventDefault(); try { await q(sb.rpc('pl_sa_guardar_plataforma', { p_datos: formData(ev.target) })); h.cerrar(); toast('Datos guardados'); vPlataforma(); } catch (er) { toast(errMsg(er), true); } };
   };
@@ -4086,7 +4201,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '55';
+const APP_VERSION = '56';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
