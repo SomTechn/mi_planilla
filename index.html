@@ -1054,7 +1054,8 @@ async function soltarPush() {
     if (sub) await sb.rpc('pl_borrar_push', { p_endpoint: sub.endpoint });
   } catch (_) { }
 }
-const pushNoMolestar = () => { try { return !!localStorage.getItem('mp_push_no'); } catch (_) { return false; } };
+// "Ahora no" pospone el aviso 3 días (antes era para siempre)
+const pushNoMolestar = () => { try { const v = +localStorage.getItem('mp_push_no') || 0; return v > 1 && Date.now() - v < 3 * 864e5; } catch (_) { return false; } };
 function bandaPush() {
   if (pushNoMolestar()) return '';
   const puede = pushSoportado() && Notification.permission === 'default', ios = !pushSoportado() && esIOS() && !enApp();
@@ -1064,7 +1065,7 @@ function bandaPush() {
 }
 function enlazarBandaPush(root) {
   const b = $('.push-banda', root); if (!b) return;
-  $('[data-push-no]', b).onclick = () => { try { localStorage.setItem('mp_push_no', '1'); } catch (_) { } b.remove(); };
+  $('[data-push-no]', b).onclick = () => { try { localStorage.setItem('mp_push_no', String(Date.now())); } catch (_) { } b.remove(); };
   const si = $('[data-push-si]', b);
   if (si) si.onclick = async () => { si.disabled = true; try { await activarPush(); b.remove(); toast('Notificaciones activadas'); } catch (e) { si.disabled = false; toast(errMsg(e), true); } };
 }
@@ -4201,7 +4202,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '56';
+const APP_VERSION = '57';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
