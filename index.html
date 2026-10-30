@@ -3627,8 +3627,8 @@ async function vMisSolicitudes() {
 }
 
 /* ===================== EDITAR / CANCELAR solicitudes pendientes ===================== */
-// vacaciones y permisos se pueden pedir (o corregir) hasta 7 días hacia atrás
-const DIAS_ATRAS_SOL = 7;
+// vacaciones, permisos y descanso compensatorio se pueden pedir (o corregir) hasta 3 días hacia atrás
+const DIAS_ATRAS_SOL = 3;
 const minFechaSol = () => addDias(iso(hoyHN()), -DIAS_ATRAS_SOL);
 const cancelarSolicitud = (t, id) => q(sb.rpc({ adelanto: 'pl_cancelar_adelanto', vac: 'pl_cancelar_vacaciones', perm: 'pl_cancelar_permiso', horas: 'pl_cancelar_horas', cons: 'pl_cancelar_constancia' }[t], { p_id: id }));
 function editarSolicitud(t, r, despues) {
@@ -3645,7 +3645,7 @@ function editarSolicitud(t, r, despues) {
       <label class="f">Horas (solo si es parte de un día)<input class="inp" type="number" name="horas" min="0.5" max="7.5" step="0.5" value="${r.horas ?? ''}"></label>
       <label class="f">Motivo<input class="inp" name="motivo" value="${esc(r.motivo || '')}" required></label>`,
     horas: r.tipo === 'extra' ? `<label class="f">Fecha<input class="inp" type="date" name="fecha" value="${r.fecha}" max="${hoy}" required></label>
-      <div class="row2"><label class="f">Hora de inicio<input class="inp" type="time" name="inicio" value="${String(r.hora_inicio || '').slice(0, 5)}" required></label><label class="f">Hora de fin<input class="inp" type="time" name="fin" value="${String(r.hora_fin || '').slice(0, 5)}" required></label></div><div class="small muted" data-tot></div>` : `<div class="row2"><label class="f">Fecha<input class="inp" type="date" name="fecha" value="${r.fecha}" min="${hoy}" required></label><label class="f">Horas<input class="inp" type="number" name="horas" min="0.5" max="8" step="0.5" value="${+r.horas}" required></label></div>
+      <div class="row2"><label class="f">Hora de inicio<input class="inp" type="time" name="inicio" value="${String(r.hora_inicio || '').slice(0, 5)}" required></label><label class="f">Hora de fin<input class="inp" type="time" name="fin" value="${String(r.hora_fin || '').slice(0, 5)}" required></label></div><div class="small muted" data-tot></div>` : `<div class="row2"><label class="f">Fecha<input class="inp" type="date" name="fecha" value="${r.fecha}" min="${minFechaSol()}" required></label><label class="f">Horas<input class="inp" type="number" name="horas" min="0.5" max="8" step="0.5" value="${+r.horas}" required></label></div>
       <label class="f">${r.tipo === 'descanso' ? 'Comentario (opcional)' : '¿Qué trabajo hiciste?'}<input class="inp" name="motivo" value="${esc(r.motivo || '')}" ${r.tipo === 'descanso' ? '' : 'required'}></label>
       ${r.tipo === 'extra' && parSi('he_pago_habilitado') ? seg('preferencia', [['pagar', 'Que me las paguen'], ['compensar', 'Tomarlas como descanso']], r.preferencia || 'pagar') : ''}`,
     cons: `<label class="f">Dirigida a<input class="inp" name="dirigido" value="${esc(r.dirigido_a || '')}" placeholder="A quien interese"></label>
@@ -3694,7 +3694,8 @@ async function vSolicitarDescanso() {
     <div class="top"><div><h1>Descanso compensatorio</h1><div class="muted small">Usa las horas extra que pasaron a tu banco de descanso</div></div></div>
     <div class="hola"><div class="k">Horas disponibles</div><div class="v">${N(b.disponible)} h</div><div class="s">8 horas equivalen a un día completo</div></div>
     ${+b.disponible > 0 ? `<div class="panel"><form id="fd" style="display:grid;gap:12px">
-      <div class="row2"><label class="f">Fecha<input class="inp" type="date" name="fecha" min="${iso(hoyHN())}" required></label><label class="f">Horas<input class="inp" type="number" name="horas" min="0.5" max="${Math.min(8, +b.disponible)}" step="0.5" value="${Math.min(8, +b.disponible)}" required></label></div>
+      <div class="row2"><label class="f">Fecha<input class="inp" type="date" name="fecha" min="${minFechaSol()}" required></label><label class="f">Horas<input class="inp" type="number" name="horas" min="0.5" max="${Math.min(8, +b.disponible)}" step="0.5" value="${Math.min(8, +b.disponible)}" required></label></div>
+      <div class="tiny muted" style="margin-top:-6px">Puedes pedir días de hasta ${DIAS_ATRAS_SOL} días atrás.</div>
       <label class="f">Comentario (opcional)<input class="inp" name="motivo"></label>
       <button class="btn pri">Pedir descanso</button></form></div>` : '<div class="vacio">Aún no tienes horas en tu banco de descanso.</div>'}`);
   const f = $('#fd');
@@ -4202,7 +4203,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '57';
+const APP_VERSION = '58';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
