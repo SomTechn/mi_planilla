@@ -2487,10 +2487,12 @@ const nomMarca = t => (TIPOS_MARCA.find(x => x[0] === t) || [, t])[1];
 const hora = x => x ? new Date(x).toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Tegucigalpa' }) : '—';
 const horasTrabajadas = d => { if (!d.entrada || !d.salida) return null; let ms = new Date(d.salida.marcado_en) - new Date(d.entrada.marcado_en); if (d.almuerzo_inicio && d.almuerzo_fin) ms -= new Date(d.almuerzo_fin.marcado_en) - new Date(d.almuerzo_inicio.marcado_en); return Math.max(0, ms / 36e5); };
 const fmtHoras = h => h == null ? '—' : `${Math.floor(h)} h ${String(Math.round((h % 1) * 60)).padStart(2, '0')} min`;
-function reducirImagen(fuente, max = 720) {
+function reducirImagen(fuente, max = 720, espejo = false) {
   const w0 = fuente.videoWidth || fuente.naturalWidth || fuente.width, h0 = fuente.videoHeight || fuente.naturalHeight || fuente.height;
   const k = Math.min(1, max / Math.max(w0, h0)); const c = document.createElement('canvas'); c.width = Math.round(w0 * k); c.height = Math.round(h0 * k);
-  c.getContext('2d').drawImage(fuente, 0, 0, c.width, c.height);
+  const ctx = c.getContext('2d');
+  if (espejo) { ctx.translate(c.width, 0); ctx.scale(-1, 1); } // guarda la selfie igual que la vista previa (que va en espejo)
+  ctx.drawImage(fuente, 0, 0, c.width, c.height);
   return new Promise(r => c.toBlob(r, 'image/jpeg', 0.75));
 }
 // Abre la cámara frontal y devuelve la selfie (Blob JPEG) o null si se cancela
@@ -2515,7 +2517,7 @@ function tomarSelfie(op = {}) {
         if (!document.body.contains(h.el)) return parar();
         vid.srcObject = stream; await vid.play().catch(() => { });
         msg.textContent = trasera ? 'Enfoca el odómetro para que se lean los números y toca “Tomar foto”' : 'Centra tu cara y toca “Tomar foto”'; bTomar.disabled = false;
-        bTomar.onclick = async () => { const b = await reducirImagen(vid); b.vivo = true; parar(); mostrar(b); };
+        bTomar.onclick = async () => { const b = await reducirImagen(vid, 720, !trasera); b.vivo = true; parar(); mostrar(b); };
       } catch (_) { respaldo(); }
     };
     bOtra.onclick = () => { foto = null; img.classList.toggle('hidden', true); vid.classList.toggle('hidden', false); bTomar.classList.toggle('hidden', false); bUsar.classList.toggle('hidden', true); bOtra.classList.toggle('hidden', true); bTomar.disabled = true; abrir(); };
@@ -4225,7 +4227,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '59';
+const APP_VERSION = '60';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
