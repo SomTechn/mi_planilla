@@ -1969,7 +1969,7 @@ async function vEmpleados() {
   try { orden = JSON.parse(sessionStorage.getItem('pl_emp_orden')) || orden; } catch (_) { }
   const COLS = [
     ['numero', '#', 'num'], ['nombre', 'Nombre', 'txt'], ['cargo', 'Cargo', 'txt'], ['salario_mensual', 'Salario mensual', 'num', 'r'],
-    ['prom', 'Prom. comisiones', 'num', 'r'], ['total', 'Total mensual', 'num', 'r'], ['recibe', 'Recibe', 'txt'], ['usuario', 'Usuario', 'txt']];
+    ['prom', 'Prom. comisiones', 'num', 'r'], ['total', 'Total mensual', 'num', 'r'], ['adel', 'Adelanto disponible', 'num', 'r'], ['recibe', 'Recibe', 'txt'], ['usuario', 'Usuario', 'txt']];
   const valor = (e, k) => k === 'recibe' ? `${e.recibe_salario ? 'Salario' : ''}${e.recibe_comisiones ? ' Comisiones' : ''}${e.recibe_combustible ? ' Combustible' : ''}${e.recibe_depreciacion ? ' Depreciación' : ''}` : k === 'usuario' ? (e.usuario || '') : e[k];
   const act = filas.filter(e => e.activo);
   const tSal = act.reduce((a, e) => a + (+e.salario_mensual || 0), 0), tCom = act.reduce((a, e) => a + e.prom, 0);
@@ -1977,7 +1977,7 @@ async function vEmpleados() {
   const tDep = conDep.reduce((a, e) => a + (+e.depreciacion_mensual || 0), 0);
   const m = shell(`<div class="top"><div><h1>Empleados</h1><div class="muted small">${act.length} activos · ${pers.length ? `promedio de comisiones de ${pers.length === 1 ? '1 mes' : `${pers.length} meses`}: ${pers.map(p => p.nombre.replace(/^Comisiones /, '')).reverse().join(', ')}` : 'aún no hay meses de comisiones cerrados'}</div></div><div class="acc"><a class="btn borde" href="#/tiempo">Vacaciones y horas</a><a class="btn borde" href="#/decimos">Proyección de décimos</a><button class="btn pri" id="nuevo">${ICON.mas}Agregar empleado</button></div></div>
     <div class="tscroll"><table class="t" id="temp"><thead><tr>${COLS.map(([k, t, , al]) => `<th class="${al || ''} ordenable" data-k="${k}" aria-sort="none">${t}<span class="flecha"></span></th>`).join('')}</tr></thead><tbody></tbody>
-    <tfoot><tr><td></td><td>Total (${act.length} activos)</td><td></td><td class="r">${L(tSal)}</td><td class="r">${L(tCom)}</td><td class="r">${L(tSal + tCom)}</td><td colspan="2" class="small muted" style="font-weight:500">Planilla quincenal: ${L(tSal / 2)}${conComb.length ? `<br>Combustible (efectivo): ${conComb.length}` : ''}${conDep.length ? `<br>Depreciación día 30: ${tDep ? L(tDep) : conDep.length + ' empleados'}` : ''}</td></tr></tfoot></table></div>
+    <tfoot><tr><td></td><td>Total (${act.length} activos)</td><td></td><td class="r">${L(tSal)}</td><td class="r">${L(tCom)}</td><td class="r">${L(tSal + tCom)}</td><td class="r" id="tadel"><span class="muted">…</span></td><td colspan="2" class="small muted" style="font-weight:500">Planilla quincenal: ${L(tSal / 2)}${conComb.length ? `<br>Combustible (efectivo): ${conComb.length}` : ''}${conDep.length ? `<br>Depreciación día 30: ${tDep ? L(tDep) : conDep.length + ' empleados'}` : ''}</td></tr></tfoot></table></div>
     ${colabs.length ? `<h2 style="margin:24px 0 6px">Colaboradores externos</h2><p class="small muted" style="margin:0 0 10px">No son empleados directos: solo cobran bonificación en la planilla de comisiones (día 15). No entran en vacaciones, horas extra, feriados, décimos, asistencia ni en los totales de arriba.</p>
     <div class="tscroll"><table class="t"><thead><tr><th>Nombre</th><th class="r">Bonificación promedio</th><th>Pago</th></tr></thead><tbody>${colabs.map(e => `<tr class="click" data-e="${e.id}" style="${e.activo ? '' : 'opacity:.5'}"><td><b>${esc(e.nombre)}</b>${e.activo ? '' : ' <span class="chip gris">inactivo</span>'}</td><td class="r">${e.prom ? L(e.prom) : '—'}</td><td class="small muted">${e.metodo_pago === 'EFECTIVO' ? 'Efectivo' : 'Transferencia ' + esc(e.banco || '')}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td>Total (${colabs.filter(e => e.activo).length})</td><td class="r">${L(colabs.filter(e => e.activo).reduce((a, e) => a + e.prom, 0))}</td><td></td></tr></tfoot></table></div>` : ''}`);
@@ -1989,7 +1989,7 @@ async function vEmpleados() {
       const r = tipo === 'num' ? (+x || 0) - (+y || 0) : String(x || '').localeCompare(String(y || ''), 'es', { sensitivity: 'base' });
       return r * orden.dir || a.nombre.localeCompare(b.nombre);
     });
-    $('#temp tbody', m).innerHTML = lista.map(e => `<tr class="click" data-e="${e.id}" style="${e.activo ? '' : 'opacity:.5'}"><td class="muted">${e.numero}</td><td><b>${esc(e.nombre)}</b>${e.activo ? '' : e.fecha_baja ? ` <span class="chip red">baja ${fc(e.fecha_baja)}</span>` : ' <span class="chip gris">inactivo</span>'}</td><td class="muted">${esc(e.cargo || '')}</td><td class="r">${+e.salario_mensual ? L(e.salario_mensual) : '—'}</td><td class="r">${e.prom ? L(e.prom) : '—'}</td><td class="r num">${e.total ? L(e.total) : '—'}</td><td><div class="chips">${e.recibe_salario ? '<span class="chip">Salario</span>' : ''}${e.recibe_comisiones ? '<span class="chip warn">Comisiones</span>' : ''}${e.recibe_combustible ? '<span class="chip comb" title="Se paga aparte, en efectivo, la misma fecha de la planilla">Combustible</span>' : ''}${e.recibe_depreciacion ? `<span class="chip dep" title="Se paga el día 30 de cada mes">Depreciación${+e.depreciacion_mensual ? ' ' + L(e.depreciacion_mensual) : ''}</span>` : ''}</div></td><td class="small">${e.user_id ? `<span class="chip ok">${esc(e.usuario || 'vinculado')}</span>` : '<span class="muted">Sin usuario</span>'}</td></tr>`).join('');
+    $('#temp tbody', m).innerHTML = lista.map(e => `<tr class="click" data-e="${e.id}" style="${e.activo ? '' : 'opacity:.5'}"><td class="muted">${e.numero}</td><td><b>${esc(e.nombre)}</b>${e.activo ? '' : e.fecha_baja ? ` <span class="chip red">baja ${fc(e.fecha_baja)}</span>` : ' <span class="chip gris">inactivo</span>'}</td><td class="muted">${esc(e.cargo || '')}</td><td class="r">${+e.salario_mensual ? L(e.salario_mensual) : '—'}</td><td class="r">${e.prom ? L(e.prom) : '—'}</td><td class="r num">${e.total ? L(e.total) : '—'}</td><td class="r">${celdaAdel(e)}</td><td><div class="chips">${e.recibe_salario ? '<span class="chip">Salario</span>' : ''}${e.recibe_comisiones ? '<span class="chip warn">Comisiones</span>' : ''}${e.recibe_combustible ? '<span class="chip comb" title="Se paga aparte, en efectivo, la misma fecha de la planilla">Combustible</span>' : ''}${e.recibe_depreciacion ? `<span class="chip dep" title="Se paga el día 30 de cada mes">Depreciación${+e.depreciacion_mensual ? ' ' + L(e.depreciacion_mensual) : ''}</span>` : ''}</div></td><td class="small">${e.user_id ? `<span class="chip ok">${esc(e.usuario || 'vinculado')}</span>` : '<span class="muted">Sin usuario</span>'}</td></tr>`).join('');
     $$('#temp th[data-k]', m).forEach(th => { const on = th.dataset.k === orden.k; th.setAttribute('aria-sort', on ? (orden.dir > 0 ? 'ascending' : 'descending') : 'none'); th.querySelector('.flecha').textContent = on ? (orden.dir > 0 ? ' ▲' : ' ▼') : ''; });
     $$('tr[data-e]', m).forEach(tr => tr.onclick = () => location.hash = `#/empleado/${tr.dataset.e}`);
   };
@@ -2002,6 +2002,28 @@ async function vEmpleados() {
   pintar();
   $$('tr[data-e]', m).forEach(tr => { if (!tr.closest('#temp')) tr.onclick = () => location.hash = `#/empleado/${tr.dataset.e}`; });
   $('#nuevo', m).onclick = () => editarEmpleado(null);
+  // Adelanto disponible de cada empleado activo (se carga después para no frenar la tabla)
+  await Promise.all(act.map(async e => {
+    const [sa, co] = await Promise.all([
+      e.recibe_salario ? q(sb.rpc('pl_adelanto_sal_disponible', { p_emp: e.id })).catch(() => null) : null,
+      e.recibe_comisiones ? q(sb.rpc('pl_adelanto_com_disponible', { p_emp: e.id })).catch(() => null) : null]);
+    if (sa) e.adelSal = { disp: Math.max(0, +sa.tope - +sa.usado), tope: +sa.tope, usado: +sa.usado, pct: sa.pct };
+    if (co) e.adelCom = { disp: +co.disponible || 0, tope: +co.tope || 0, usado: +co.usado || 0, pct: co.pct, hay: co.hay_periodo };
+    e.adel = (e.adelSal?.disp || 0) + (e.adelCom?.disp || 0);
+    e.adelListo = true;
+  }));
+  if (!m.isConnected) return;
+  pintar();
+  const tSa = act.reduce((a, e) => a + (e.adelSal?.disp || 0), 0), tCo = act.reduce((a, e) => a + (e.adelCom?.disp || 0), 0);
+  $('#tadel', m).innerHTML = `${L(tSa + tCo)}${tCo ? `<div class="tiny muted" style="font-weight:500">Sal. ${L(tSa)} · Com. ${L(tCo)}</div>` : ''}`;
+}
+// celda "Adelanto disponible": salario de la quincena actual y comisiones del mes abierto
+function celdaAdel(e) {
+  if (!e.activo) return '—';
+  if (!e.adelListo) return '<span class="muted">…</span>';
+  const lin = (et, d, nota) => d ? `<div title="${d.pct}% · tope ${L(d.tope)} · ya pedido ${L(d.usado)}" style="white-space:nowrap"><span class="tiny muted">${et}</span> <b style="color:${d.disp > 0 ? '#0F7A43' : '#B42318'}">${L(d.disp)}</b>${nota || ''}</div>` : '';
+  const sa = lin('Sal.', e.adelSal), co = e.adelCom && e.adelCom.hay === false ? '<div class="tiny muted">Com.: sin planilla abierta</div>' : lin('Com.', e.adelCom);
+  return sa || co ? sa + co : '—';
 }
 
 function editarEmpleado(e) {
@@ -4203,7 +4225,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '58';
+const APP_VERSION = '59';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
