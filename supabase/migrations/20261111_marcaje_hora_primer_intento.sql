@@ -1,0 +1,7 @@
+-- v64 (11-nov-2026). Aplicada como `pl_marcar_hora_del_primer_intento`.
+-- 1) pl_marcajes.guardado_en (timestamptz, default now()): hora del servidor en que el marcaje terminó de guardarse.
+-- 2) pl_marcar: marcado_en = hora del PRIMER intento de hoy para esa marca (pl_marcaje_intentos.iniciado_en, la pone el servidor
+--    al tocar "Marcar"), si fue en los últimos `marcaje_retraso_max_min` minutos (30 si no existe el parámetro), no fue cancelado
+--    y es posterior al marcaje anterior. Si no hay intento, queda la hora de llegada como antes.
+--    Si entre la hora oficial y la de guardado hay 2 min o más: alerta 'retraso' (queda por revisar).
+-- 3) grant select on pl_marcaje_intentos to pl_definer.
