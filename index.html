@@ -511,6 +511,43 @@ button.lnk{background:none;border:0;padding:0;color:var(--azul2);font-weight:600
 .push-banda,.info-banda{background:var(--suave);color:var(--tinta)}.push-banda .acc{display:flex;gap:8px}
 .susc-banda.mal{background:#FDECEC;color:var(--rojo)}
 .susc-banda a{font-weight:700;color:inherit}
+
+/* ---------- diseño responsivo PC / celular (v61) ---------- */
+@media (min-width:1200px){table.t td>b:first-child{white-space:nowrap}}
+@media (min-width:641px) and (max-width:1199px){table.t td:has(>b:first-child){min-width:140px}}
+@media (max-width:860px){
+  .side{box-shadow:none;visibility:hidden;transition:transform .22s ease,visibility 0s linear .22s}
+  body.menu-abierto .side{box-shadow:8px 0 30px rgba(0,0,0,.25);visibility:visible;transition:transform .22s ease}
+}
+.nw{white-space:nowrap}
+.marcas-seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;border-radius:16px}
+.marcas-seg button{padding:10px 8px;border-radius:12px}
+.marcas-seg button:only-child,.marcas-seg button:last-child:nth-child(odd){grid-column:1/-1}
+@media (max-width:640px){
+  .top .acc{width:100%;min-width:0}
+  .top .acc>select.inp{flex:1 1 100%;width:100%!important}
+  .segm button{padding:8px 14px}
+  .btn.sm{min-height:38px}
+  .btn-copiar{width:34px;height:34px}
+  table.accesos-t td{display:block;text-align:left;padding:4px 0;border:0}
+  table.accesos-t tr{display:block;padding:10px 0;border-bottom:1px solid #EEF2F8}
+  table.accesos-t td.r{white-space:normal}
+  /* Tablas → tarjetas: cada fila es una tarjeta con etiquetas (data-l lo pone tarjetas()) */
+  table.t.tarj,table.t.tarj tbody,table.t.tarj tfoot{display:block}
+  table.t.tarj thead{display:none}
+  table.t.tarj tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 14px;padding:12px 14px;border-bottom:1px solid #EEF2F8}
+  table.t.tarj tbody tr:last-child{border-bottom:0}
+  table.t.tarj tfoot tr{background:#F7FAFF;border-top:1.5px solid var(--linea);border-bottom:0}
+  table.t.tarj td{display:block;padding:0;border:0;text-align:left;white-space:normal;min-width:0;overflow-wrap:anywhere}
+  table.t.tarj td::before{content:attr(data-l);display:block;font-size:11.5px;line-height:1.3;font-weight:500;color:var(--gris);margin-bottom:2px}
+  table.t.tarj td.tj-tit{grid-column:1/-1;order:-1;font-size:15px;overflow-wrap:normal}
+  table.t.tarj td.tj-tit::before,table.t.tarj td.tj-sin::before,table.t.tarj td[colspan]::before{display:none}
+  table.t.tarj td.tj-sin,table.t.tarj td[colspan]{grid-column:1/-1}
+  table.t.tarj td.tj-num,table.t.tarj td:empty{display:none}
+  table.t.tarj tr.click:hover td{background:none}
+  table.t.tarj tr.click:active{background:#F7FAFF}
+  .tscroll:has(>table.t.tarj){overflow-x:visible}
+}
 </style>
 </head>
 <body>
@@ -532,7 +569,40 @@ const app = $('#app');
 
 /* ===================== utilidades ===================== */
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const L = n => 'L ' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Tablas → tarjetas en el celular: cada celda lleva la etiqueta de su columna (data-l).
+// Solo tablas de 4 o más columnas; la cuadrícula de horarios queda como tabla.
+function tarjetas() {
+  document.querySelectorAll('table.t:not(.hor-t):not(.no-tarj)').forEach(t => {
+    const h = t.tHead && t.tHead.rows[0]; if (!h) return;
+    const firma = h.textContent;
+    if (t._tjFirma !== firma) {
+      const etq = [];
+      for (const th of h.cells) { const x = th.textContent.replace(/[▲▼↑↓]/g, '').replace(/\s+/g, ' ').trim(); for (let k = 0; k < (th.colSpan || 1); k++) etq.push(x); }
+      const datos = etq.filter(x => x && x !== '#').length;
+      let tit = etq.findIndex(x => /^(empleado|nombre|colaborador)/i.test(x));
+      if (tit < 0) tit = etq.findIndex(x => x && x !== '#');
+      t._tjEtq = etq; t._tjTit = tit; t._tjFirma = firma; t._tjSi = datos >= 4;
+      for (const sec of [...t.tBodies, t.tFoot]) if (sec) for (const tr of sec.rows) tr._tj = 0;
+    }
+    t.classList.toggle('tarj', t._tjSi); if (!t._tjSi) return;
+    for (const sec of [...t.tBodies, t.tFoot]) if (sec) for (const tr of sec.rows) {
+      if (tr._tj) continue; tr._tj = 1; let c = 0;
+      for (const td of tr.cells) {
+        const l = t._tjEtq[c] || '';
+        if ((td.colSpan || 1) === 1) {
+          if (c === t._tjTit) td.classList.add('tj-tit');
+          else if (l === '#') td.classList.add('tj-num');
+          else if (!l) td.classList.add('tj-sin');
+          else td.dataset.l = l;
+        }
+        c += td.colSpan || 1;
+      }
+    }
+  });
+}
+let _tjPend = false;
+new MutationObserver(() => { if (_tjPend) return; _tjPend = true; requestAnimationFrame(() => { _tjPend = false; tarjetas(); }); }).observe(document.documentElement, { childList: true, subtree: true });
+const L = n => 'L\u00a0' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const N = n => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const DIAS = ['D','L','M','M','J','V','S'];
@@ -657,7 +727,7 @@ function pintarLogin() {
       <label class="f">Contraseña<input class="inp" name="p" type="password" autocomplete="current-password" required></label>
       <div class="err hidden" id="lerr"></div>
       <button class="btn pri" type="submit">Ingresar</button>
-    </form></div>
+    </form>
     <p class="login-alta">¿Tu empresa aún no usa Mi Planilla? <a href="#/registro">Pruébala gratis</a></p></div>
     <div><div class="billetes"></div><div class="login-pie"><a href="#/inicio" style="color:#AFC6F0">Conoce Mi Planilla</a> · un sistema de <b>${DUENO_SISTEMA}</b></div></div></div>`;
   $('#flog').onsubmit = async e => {
@@ -676,7 +746,7 @@ function pintarLogin() {
 // Página pública, registro de empresas, suscripción de cada empresa y panel del dueño del servicio.
 const FN_URL = `${SB_URL}/functions/v1`;
 const soloDigitos = s => String(s || '').replace(/\D/g, '');
-const waLink = (tel, txt) => { const d = soloDigitos(tel); return d ? `https://wa.me/${d.length === 8 ? '504' + d : d}?text=${encodeURIComponent(txt)}` : ''; };
+const waLink = (tel, txt) => { txt = String(txt).replace(/\u00a0/g, ' '); const d = soloDigitos(tel); return d ? `https://wa.me/${d.length === 8 ? '504' + d : d}?text=${encodeURIComponent(txt)}` : ''; };
 // plan sin límite ni precio fijo (ej. Personalizado): se cotiza
 const aCotizar = p => !p.max_empleados && !+p.precio_mensual;
 const precioPlan = p => +p.precio_mensual ? `${L(p.precio_mensual).replace('.00', '')}<span>/mes</span>` : 'A tu medida';   // nunca "Gratis": un plan sin precio se cotiza
@@ -1408,7 +1478,7 @@ async function vPlanillas() {
     ${per.length ? [['abierta', 'Abiertas', 'En preparación: se pueden editar'], ['cerrada', 'Cerradas', 'Comprobantes generados']].map(([est, tit, sub]) => { const l = per.filter(p => (p.estado === 'cerrada') === (est === 'cerrada')); return l.length ? `<div class="sep-estado ${est}"><span>${tit} · ${l.length}</span><small>${sub}</small></div><div class="lista">${l.map(p => `
       <a class="item ${est === 'abierta' ? 'item-abierta' : ''}" href="#/planilla/${p.id}">
         <div class="pago" style="flex:1"><div class="ic ${p.tipo === 'salario' ? 's' : 'c'}">${p.tipo === 'salario' ? 'Q' : '%'}</div>
-          <div class="grow"><div class="t">${esc(p.nombre)}</div><div class="s">${rango(p.fecha_inicio, p.fecha_fin)} · pago ${fc(p.fecha_pago)} · ${esc(p.codigo)}</div></div>
+          <div class="grow"><div class="t">${esc(p.nombre)}</div><div class="s">${rango(p.fecha_inicio, p.fecha_fin)} · pago ${fc(p.fecha_pago)} · <span class="nw">${esc(p.codigo)}</span></div></div>
           <div style="text-align:right">${p.estado === 'cerrada' ? `<span class="chip ok">Cerrada</span><div class="num small" style="margin-top:4px">${L(tot[p.id])}</div>` : '<span class="chip warn">Abierta</span>'}</div></div>
       </a>`).join('')}</div>` : ''; }).join('') : `<div class="vacio"><b>Aún no hay planillas</b>Crea la primera quincena o mes de comisiones.</div>`}`);
   $('#nuevo', m).onclick = () => nuevaPlanilla(per);
@@ -1466,7 +1536,7 @@ async function vPeriodo(id, tab) {
   const tabs = [['resumen', 'Planilla general'], ...(per.tipo === 'salario' ? [['asistencia', 'Asistencia']] : []), ['movimientos', per.tipo === 'salario' ? 'Otros ingresos y deducciones' : 'Comisiones y deducciones'], ['adelantos', 'Adelantos'], ['comprobantes', 'Comprobantes'], ['contable', 'Contabilidad']];
   const m = shell(`
     <div class="miga"><a href="#/planillas">Planillas</a></div>
-    <div class="top"><div><h1>${esc(per.nombre)}</h1><div class="muted small">${rango(per.fecha_inicio, per.fecha_fin)} · pago ${fc(per.fecha_pago)} · ${esc(per.codigo)} · ${abierta ? '<span class="chip warn">Abierta · vista previa</span>' : `<span class="chip ok">Cerrada ${per.cerrado_en ? 'el ' + fc(per.cerrado_en.slice(0, 10)) : ''}</span>`}</div></div>
+    <div class="top"><div><h1>${esc(per.nombre)}</h1><div class="muted small">${rango(per.fecha_inicio, per.fecha_fin)} · pago ${fc(per.fecha_pago)} · <span class="nw">${esc(per.codigo)}</span> · ${abierta ? '<span class="chip warn">Abierta · vista previa</span>' : `<span class="chip ok">Cerrada ${per.cerrado_en ? 'el ' + fc(per.cerrado_en.slice(0, 10)) : ''}</span>`}</div></div>
       <div class="acc">${abierta ? `<button class="btn borde" id="editp">Editar</button><button class="btn ama" id="cerrar">Cerrar y generar comprobantes</button>` : `<button class="btn borde" id="reabrir">Reabrir</button>`}</div></div>
     <div class="totales"><div><div class="k">Empleados</div><div class="v">${calc.length}</div></div><div><div class="k">Total ingresos</div><div class="v">${L(T.ing)}</div></div><div><div class="k">Deducciones</div><div class="v">${L(T.ded)}</div></div><div class="neto"><div class="k">Total a pagar</div><div class="v">${L(T.neto)}</div></div></div>
     <div class="tabs">${tabs.map(([k, t]) => `<a href="#/planilla/${id}/${k}" class="${tab === k ? 'on' : ''}">${t}</a>`).join('')}</div>
@@ -1773,6 +1843,7 @@ const ICON_COPIAR = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none"
 const btnCopiar = (t, titulo = 'Copiar') => `<button type="button" class="btn-copiar" data-copiar="${esc(t)}" title="${esc(titulo)}" aria-label="${esc(titulo)}">${ICON_COPIAR}</button>`;
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-copiar]'); if (!b) return; e.preventDefault(); e.stopPropagation(); copiarTexto(b.dataset.copiar); }, true);
 async function copiarTexto(t) {
+  t = String(t).replace(/\u00a0/g, ' ');
   try { await navigator.clipboard.writeText(t); }
   catch (_) { const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (__) { } ta.remove(); }
   toast('Copiado');
@@ -2308,7 +2379,7 @@ async function vAjustes() {
     <div class="panel" style="margin-top:14px" id="pferiados"><div class="muted small">Cargando feriados…</div></div>
     <div class="panel" style="margin-top:14px"><h3 style="margin-bottom:4px">Accesos</h3>
       <p class="small muted" style="margin:0 0 10px">Pueden ver y editar todo: planillas, empleados, préstamos, adelantos y comprobantes de todos. El administrador principal del sistema siempre tiene este acceso. El <b>supervisor de asistencia</b> marca la asistencia de todos (faltas, llegadas tarde, horas extra), ve los marcajes y administra vacaciones, permisos y horas extra (no las suyas); no ve salarios, comprobantes ni préstamos. Solo aparecen empleados que ya tienen usuario.</p>
-      ${conCuenta.length ? `<table class="t"><tbody>${conCuenta.map(e => `<tr><td><b>${esc(e.nombre)}</b><div class="tiny muted">${esc(e.usuario || '')}</div></td><td class="r">${e.user_id === S.user.id ? `<span class="chip ok">Tú</span>${aut.has(e.user_id) ? ' <span class="chip warn">Autoriza</span>' : ''}` : `<div style="display:flex;gap:14px;justify-content:flex-end;flex-wrap:wrap"><label class="chk"><input type="checkbox" data-adm="${e.user_id}" ${esAdm.has(e.user_id) ? 'checked' : ''}>Administrador</label><label class="chk"><input type="checkbox" data-aut="${e.user_id}" ${aut.has(e.user_id) ? 'checked' : ''} ${esAdm.has(e.user_id) ? '' : 'disabled'}>Autoriza adelantos especiales</label><label class="chk"><input type="checkbox" data-sup="${e.user_id}" ${sup.has(e.user_id) ? 'checked' : ''} ${esAdm.has(e.user_id) ? 'disabled title="Los administradores ya manejan la asistencia"' : ''}>Supervisor de asistencia</label></div>`}</td></tr>`).join('')}</tbody></table>` : '<p class="small muted">Ningún empleado tiene usuario todavía.</p>'}</div>
+      ${conCuenta.length ? `<table class="t accesos-t"><tbody>${conCuenta.map(e => `<tr><td><b>${esc(e.nombre)}</b><div class="tiny muted">${esc(e.usuario || '')}</div></td><td class="r">${e.user_id === S.user.id ? `<span class="chip ok">Tú</span>${aut.has(e.user_id) ? ' <span class="chip warn">Autoriza</span>' : ''}` : `<div style="display:flex;gap:14px;justify-content:flex-end;flex-wrap:wrap"><label class="chk"><input type="checkbox" data-adm="${e.user_id}" ${esAdm.has(e.user_id) ? 'checked' : ''}>Administrador</label><label class="chk"><input type="checkbox" data-aut="${e.user_id}" ${aut.has(e.user_id) ? 'checked' : ''} ${esAdm.has(e.user_id) ? '' : 'disabled'}>Autoriza adelantos especiales</label><label class="chk"><input type="checkbox" data-sup="${e.user_id}" ${sup.has(e.user_id) ? 'checked' : ''} ${esAdm.has(e.user_id) ? 'disabled title="Los administradores ya manejan la asistencia"' : ''}>Supervisor de asistencia</label></div>`}</td></tr>`).join('')}</tbody></table>` : '<p class="small muted">Ningún empleado tiene usuario todavía.</p>'}</div>
     <div class="panel" style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px"><h3>Plantillas de cálculo por área o cargo</h3><button class="btn sm pri" id="nparea">${ICON.mas}Agregar</button></div>
       <p class="small muted" style="margin:0 0 10px">Se aplican a todos los empleados de esa área o cargo, salvo que el empleado tenga su propio cálculo del mismo concepto.</p>${tablaPlantillas(plArea)}</div>
     <div class="panel" style="margin-top:14px"><h3 style="margin-bottom:4px">Funciones para empleados</h3><p class="small muted" style="margin:0 0 4px">Se aplican de inmediato a todos los empleados.</p>
@@ -2484,7 +2555,7 @@ const chipsAlerta = al => (al || []).map(a => `<span class="mk-al" title="${esc(
 function idDispositivo() { try { let d = localStorage.getItem('mp_disp'); if (!d) { d = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)); localStorage.setItem('mp_disp', d); } return d; } catch (_) { return null; } }
 const TIPOS_MARCA = [['entrada', 'Entrada'], ['almuerzo_inicio', 'Salida a almuerzo'], ['almuerzo_fin', 'Regreso de almuerzo'], ['salida', 'Salida']];
 const nomMarca = t => (TIPOS_MARCA.find(x => x[0] === t) || [, t])[1];
-const hora = x => x ? new Date(x).toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Tegucigalpa' }) : '—';
+const hora = x => x ? new Date(x).toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Tegucigalpa' }).replace(/\s/g, '\u00a0') : '—';
 const horasTrabajadas = d => { if (!d.entrada || !d.salida) return null; let ms = new Date(d.salida.marcado_en) - new Date(d.entrada.marcado_en); if (d.almuerzo_inicio && d.almuerzo_fin) ms -= new Date(d.almuerzo_fin.marcado_en) - new Date(d.almuerzo_inicio.marcado_en); return Math.max(0, ms / 36e5); };
 const fmtHoras = h => h == null ? '—' : `${Math.floor(h)} h ${String(Math.round((h % 1) * 60)).padStart(2, '0')} min`;
 function reducirImagen(fuente, max = 720, espejo = false) {
@@ -3048,7 +3119,7 @@ async function vTiempoEmpleados() {
   const f = fs[0]?.factor_he || 1.25;
   const m = shell(`<div class="miga"><a href="#/empleados">Empleados</a></div><div class="top"><div><h1>Vacaciones y horas extra</h1><div class="muted small">${fs.length} empleados activos · al ${fl(iso(hoyHN()))}</div></div>
       <div class="acc"><button class="btn borde" id="xls">${ICON.doc || ''}Descargar Excel</button></div></div>
-    <div class="totales" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px">
+    <div class="totales" style="margin-bottom:14px">
       <div><div class="k">Días de vacaciones disponibles</div><div class="v">${N(sum('vac_disponible'))}</div></div>
       <div><div class="k">Valor de esas vacaciones</div><div class="v">${L(sum('vac_valor'))}</div></div>
       <div><div class="k">Horas extra en banco</div><div class="v">${N(sum('horas_saldo'))}</div></div>
@@ -4227,7 +4298,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '60';
+const APP_VERSION = '61';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
