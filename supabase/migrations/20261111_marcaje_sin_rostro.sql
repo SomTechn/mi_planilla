@@ -1,0 +1,7 @@
+-- Marcaje: alerta 'sin_rostro' cuando el teléfono no pudo comprobar que hubiera una cara en la selfie (v62).
+-- pl_marcar recibe p_rostro: true = cara comprobada, false = no se pudo comprobar, null = versión anterior de la app (sin alerta).
+-- Aplicada el 11-nov-2026 como migración `pl_marcar_alerta_sin_rostro`: se reemplazó pl_marcar agregando el parámetro
+--   p_rostro boolean default null
+-- y, después de la alerta 'foto_respaldo':
+--   if p_rostro is false then al := array_append(al, 'sin_rostro'); end if;
+-- El resto de la función no cambió. Dueño: pl_definer. EXECUTE solo para authenticated y service_role.

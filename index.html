@@ -389,6 +389,9 @@ body.bloqueada #app{visibility:hidden}
 .selfie.trasera{aspect-ratio:4/3}
 .selfie-msg{position:absolute;left:0;right:0;bottom:0;padding:10px;text-align:center;background:linear-gradient(transparent,rgba(10,42,102,.85));color:#fff!important}
 .selfie-msg:empty{display:none}
+.selfie-ovalo{position:absolute;left:50%;top:46%;width:62%;aspect-ratio:3/4;transform:translate(-50%,-50%);border:3px dashed rgba(255,255,255,.9);border-radius:50%;pointer-events:none;box-shadow:0 0 0 999px rgba(10,42,102,.38);transition:border-color .2s}
+.selfie.ok .selfie-ovalo{border:4px solid #2ECC71}
+.selfie.lista .selfie-ovalo{display:none}
 .btn.grande{padding:16px;font-size:17px}
 .marcas-seg{display:flex;flex-wrap:wrap;border-radius:14px}
 .marcas-seg button{flex:1 1 auto}
@@ -2549,7 +2552,7 @@ async function vMiComprobante(id) {
 /* ===================== MARCAJE: hora, selfie y GPS ===================== */
 const ALERTAS_MK = { fuera_zona: ['Fuera de zona', 'Marcó fuera de la zona de trabajo'], otro_telefono: ['Otro teléfono', 'Marcó desde un teléfono distinto al registrado'],
   gps_repetido: ['GPS repetido', 'La ubicación es idéntica a la de otro día (posible GPS falso)'], salto_imposible: ['Salto imposible', 'Se movió demasiado rápido desde el marcaje anterior (posible GPS falso)'],
-  foto_respaldo: ['Foto no en vivo', 'La selfie no se tomó con la cámara en vivo de la app'], olvido: ['Olvidó marcar', 'El empleado pidió agregar este marcaje porque no marcó'] };
+  foto_respaldo: ['Foto no en vivo', 'La selfie no se tomó con la cámara en vivo de la app'], sin_rostro: ['Sin rostro', 'El teléfono no pudo comprobar que hubiera una cara en la selfie'], olvido: ['Olvidó marcar', 'El empleado pidió agregar este marcaje porque no marcó'] };
 const chipsAlerta = al => (al || []).map(a => `<span class="mk-al" title="${esc(ALERTAS_MK[a]?.[1] || a)}">${esc(ALERTAS_MK[a]?.[0] || a)}</span>`).join(' ');
 // identificador de este teléfono (se registra con el primer marcaje)
 function idDispositivo() { try { let d = localStorage.getItem('mp_disp'); if (!d) { d = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)); localStorage.setItem('mp_disp', d); } return d; } catch (_) { return null; } }
@@ -2566,32 +2569,102 @@ function reducirImagen(fuente, max = 720, espejo = false) {
   ctx.drawImage(fuente, 0, 0, c.width, c.height);
   return new Promise(r => c.toBlob(r, 'image/jpeg', 0.75));
 }
-// Abre la cámara frontal y devuelve la selfie (Blob JPEG) o null si se cancela
+/* ----- Detección de rostro en la selfie (corre en el teléfono, no envía nada a otro servicio) ----- */
+let _rostroP = null;
+// Carga la librería y el modelo una sola vez. Devuelve false si este teléfono no puede (el marcaje queda con alerta "sin rostro").
+function cargarRostro() {
+  if (_rostroP) return _rostroP;
+  const cargar = new Promise((ok, mal) => { if (window.faceapi) return ok(); const s = document.createElement('script'); s.src = 'vendor/face-api.js'; s.onload = ok; s.onerror = mal; document.head.appendChild(s); })
+    .then(() => faceapi.nets.tinyFaceDetector.isLoaded || faceapi.nets.tinyFaceDetector.loadFromUri('vendor/modelos'))
+    .then(async () => { const c = document.createElement('canvas'); c.width = c.height = 64; c.getContext('2d').fillRect(0, 0, 64, 64); await faceapi.detectAllFaces(c, new faceapi.TinyFaceDetectorOptions({ inputSize: 224 })); return true; });
+  _rostroP = Promise.race([cargar, new Promise((_, mal) => setTimeout(() => mal(new Error('tiempo')), 20000))]).catch(() => { _rostroP = null; return false; });
+  return _rostroP;
+}
+const _lzRostro = document.createElement('canvas');
+// Caras que se ven en un video o imagen: cajas en fracciones (0 a 1) del cuadro completo
+async function mirarRostro(fuente) {
+  const w0 = fuente.videoWidth || fuente.naturalWidth || fuente.width, h0 = fuente.videoHeight || fuente.naturalHeight || fuente.height;
+  if (!w0 || !h0) return [];
+  const k = Math.min(1, 320 / Math.max(w0, h0)), c = _lzRostro; c.width = Math.round(w0 * k); c.height = Math.round(h0 * k);
+  c.getContext('2d', { willReadFrequently: true }).drawImage(fuente, 0, 0, c.width, c.height);
+  const ds = await faceapi.detectAllFaces(c, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }));
+  return ds.map(d => ({ x: d.box.x / c.width, y: d.box.y / c.height, w: d.box.width / c.width, h: d.box.height / c.height }));
+}
+// ¿Hay una sola cara, cerca y centrada? vis = parte del cuadro que se ve en pantalla; suelto = foto ya tomada (sin exigir centrado)
+function evaluarRostro(cajas, vis = { x: 0, y: 0, w: 1, h: 1 }, suelto = false) {
+  cajas = cajas.filter(c => { const x = c.x + c.w / 2, y = c.y + c.h / 2; return x >= vis.x && x <= vis.x + vis.w && y >= vis.y && y <= vis.y + vis.h; }); // solo las que se ven en pantalla
+  if (!cajas.length) return { ok: false, cod: 'nada' };
+  const o = [...cajas].sort((a, b) => b.w * b.h - a.w * a.h), c = o[0];
+  if (o[1] && o[1].w >= c.w * 0.6) return { ok: false, cod: 'varias' };
+  const ancho = c.w / vis.w, cx = (c.x + c.w / 2 - vis.x) / vis.w, cy = (c.y + c.h / 2 - vis.y) / vis.h;
+  if (ancho < (suelto ? 0.15 : 0.25)) return { ok: false, cod: 'lejos' };
+  if (!suelto && (cx < 0.25 || cx > 0.75 || cy < 0.2 || cy > 0.75)) return { ok: false, cod: 'centro' };
+  return { ok: true };
+}
+const TXT_ROSTRO = { nada: 'Pon tu cara dentro del óvalo', varias: 'Solo debe aparecer una persona', lejos: 'Acércate un poco más', centro: 'Centra tu cara en el óvalo' };
+const TXT_ROSTRO_FOTO = { nada: 'No se ve tu cara en la foto.', varias: 'En la foto solo debes aparecer tú.', lejos: 'Tu cara se ve muy lejos en la foto.' };
+// Abre la cámara frontal y devuelve la selfie (Blob JPEG) o null si se cancela.
+// En la selfie solo deja tomar la foto cuando se ve una cara (blob.rostro = true); si el detector no funciona, blob.rostro = false.
 function tomarSelfie(op = {}) {
-  const trasera = op.trasera, titulo = op.titulo || 'Selfie';
+  const trasera = op.trasera, titulo = op.titulo || 'Selfie', conRostro = !trasera;
   return new Promise(resolve => {
-    let stream = null, listo = false, foto = null;
-    const parar = () => { stream?.getTracks().forEach(t => t.stop()); stream = null; };
-    const h = hoja(titulo, `<div class="selfie ${trasera ? 'trasera' : ''}"><video playsinline autoplay muted></video><img alt="${esc(titulo)}" class="hidden"><div class="selfie-msg small muted">Abriendo la cámara…</div></div>
+    let stream = null, listo = false, foto = null, turno = 0;
+    const parar = () => { turno++; stream?.getTracks().forEach(t => t.stop()); stream = null; };
+    const h = hoja(titulo, `<div class="selfie ${trasera ? 'trasera' : ''}"><video playsinline autoplay muted></video><img alt="${esc(titulo)}" class="hidden">${conRostro ? '<div class="selfie-ovalo"></div>' : ''}<div class="selfie-msg small muted">Abriendo la cámara…</div></div>
       <input type="file" accept="image/*" capture="${trasera ? 'environment' : 'user'}" hidden>
       <div class="pie"><button type="button" class="btn borde hidden" data-otra>Repetir</button><button type="button" class="btn pri" data-tomar disabled>${ICON.camara}Tomar foto</button><button type="button" class="btn pri hidden" data-usar>Usar esta foto</button></div>`,
       { alCerrar: () => { parar(); if (!listo) resolve(null); } });
-    const vid = $('video', h.el), img = $('img', h.el), msg = $('.selfie-msg', h.el), inp = $('input[type=file]', h.el);
+    const caja = $('.selfie', h.el), vid = $('video', h.el), img = $('img', h.el), msg = $('.selfie-msg', h.el), inp = $('input[type=file]', h.el);
     const bTomar = $('[data-tomar]', h.el), bUsar = $('[data-usar]', h.el), bOtra = $('[data-otra]', h.el);
-    const mostrar = blob => { foto = blob; img.src = URL.createObjectURL(blob); img.classList.toggle('hidden', false); vid.classList.toggle('hidden', true); bTomar.classList.toggle('hidden', true); bUsar.classList.toggle('hidden', false); bOtra.classList.toggle('hidden', false); msg.textContent = ''; };
-    const respaldo = () => { msg.innerHTML = 'No se pudo abrir la cámara aquí. Toca el botón para tomar la selfie con la cámara del teléfono.'; vid.classList.toggle('hidden', true); bTomar.disabled = false; bTomar.onclick = () => inp.click(); };
-    inp.onchange = async () => { const f = inp.files[0]; if (!f) return; const im = new Image(); im.onload = async () => { const b = await reducirImagen(im); b.vivo = false; mostrar(b); }; im.src = URL.createObjectURL(f); };
+    const mostrar = blob => { foto = blob; img.src = URL.createObjectURL(blob); img.classList.toggle('hidden', false); vid.classList.toggle('hidden', true); caja.classList.remove('ok'); caja.classList.add('lista'); bTomar.classList.toggle('hidden', true); bUsar.classList.toggle('hidden', false); bOtra.classList.toggle('hidden', false); msg.textContent = ''; };
+    const respaldo = () => { msg.textContent = 'No se pudo abrir la cámara aquí. Toca el botón para tomar la selfie con la cámara del teléfono.'; vid.classList.toggle('hidden', true); caja.classList.remove('ok'); caja.classList.add('lista'); bTomar.disabled = false; bTomar.onclick = () => inp.click(); };
+    inp.onchange = () => {
+      const f = inp.files[0]; inp.value = ''; if (!f) return; const im = new Image();
+      im.onload = async () => {
+        let rostro = false;
+        if (conRostro) { // la foto del teléfono también debe mostrar una cara
+          msg.textContent = 'Revisando la foto…'; bTomar.disabled = true;
+          const e = await cargarRostro() ? await mirarRostro(im).then(c => evaluarRostro(c, undefined, true)).catch(() => null) : null;
+          bTomar.disabled = false;
+          if (!document.body.contains(h.el)) return;
+          if (e && !e.ok) { msg.textContent = `${TXT_ROSTRO_FOTO[e.cod]} Toca el botón y tómala de nuevo.`; return; }
+          rostro = !!e;
+        }
+        const b = await reducirImagen(im); b.vivo = false; b.rostro = rostro; mostrar(b);
+      };
+      im.src = URL.createObjectURL(f);
+    };
+    const capturar = async rostro => { const b = await reducirImagen(vid, 720, !trasera); b.vivo = true; b.rostro = rostro; parar(); mostrar(b); };
+    // parte del video que se ve en pantalla (el video se recorta para llenar el recuadro)
+    const visible = () => { const fa = vid.videoWidth / vid.videoHeight, ea = vid.clientWidth / vid.clientHeight || 0.75; return fa > ea ? { x: (1 - ea / fa) / 2, y: 0, w: ea / fa, h: 1 } : { x: 0, y: (1 - fa / ea) / 2, w: 1, h: fa / ea }; };
     const abrir = async () => {
       if (!navigator.mediaDevices?.getUserMedia) return respaldo();
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: trasera ? 'environment' : 'user', width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false });
         if (!document.body.contains(h.el)) return parar();
         vid.srcObject = stream; await vid.play().catch(() => { });
-        msg.textContent = trasera ? 'Enfoca el odómetro para que se lean los números y toca “Tomar foto”' : 'Centra tu cara y toca “Tomar foto”'; bTomar.disabled = false;
-        bTomar.onclick = async () => { const b = await reducirImagen(vid, 720, !trasera); b.vivo = true; parar(); mostrar(b); };
-      } catch (_) { respaldo(); }
+      } catch (_) { return respaldo(); }
+      if (!conRostro) { msg.textContent = 'Enfoca el odómetro para que se lean los números y toca “Tomar foto”'; bTomar.disabled = false; bTomar.onclick = () => capturar(false); return; }
+      const mio = turno, sigue = () => mio === turno && stream;
+      const sinDetector = () => { caja.classList.remove('ok'); msg.textContent = 'Este teléfono no pudo activar el detector de rostro. Puedes tomar la foto, pero el marcaje quedará por revisar.'; bTomar.disabled = false; bTomar.onclick = () => capturar(false); };
+      msg.textContent = 'Preparando el detector de rostro…';
+      const hay = await cargarRostro();
+      if (!sigue()) return;
+      if (!hay) return sinDetector();
+      let seguidas = 0;
+      bTomar.onclick = () => capturar(true);
+      const ciclo = async () => {
+        if (!sigue()) return;
+        let e; try { e = evaluarRostro(await mirarRostro(vid), visible()); } catch (_) { if (sigue()) sinDetector(); return; }
+        if (!sigue()) return;
+        seguidas = e.ok ? seguidas + 1 : 0; const ok = seguidas >= 2; // dos lecturas seguidas para evitar falsos positivos
+        caja.classList.toggle('ok', ok); bTomar.disabled = !ok;
+        msg.textContent = ok ? '¡Listo! Toca “Tomar foto”' : e.ok ? 'No te muevas…' : TXT_ROSTRO[e.cod];
+        setTimeout(ciclo, 150);
+      };
+      ciclo();
     };
-    bOtra.onclick = () => { foto = null; img.classList.toggle('hidden', true); vid.classList.toggle('hidden', false); bTomar.classList.toggle('hidden', false); bUsar.classList.toggle('hidden', true); bOtra.classList.toggle('hidden', true); bTomar.disabled = true; abrir(); };
+    bOtra.onclick = () => { foto = null; img.classList.toggle('hidden', true); vid.classList.toggle('hidden', false); caja.classList.remove('lista'); bTomar.classList.toggle('hidden', false); bUsar.classList.toggle('hidden', true); bOtra.classList.toggle('hidden', true); bTomar.disabled = true; msg.textContent = 'Abriendo la cámara…'; abrir(); };
     bUsar.onclick = () => { listo = true; h.cerrar(); resolve(foto); };
     abrir();
   });
@@ -2620,6 +2693,7 @@ async function vMarcar() {
   cargando();
   try { S.par = await parametros(); } catch (_) { }
   if (!marcajeActivo()) return shell('<div class="vacio"><b>El marcaje no está activado</b>Administración lo puede activar en Ajustes.</div>');
+  cargarRostro(); // va preparando el detector de rostro para que esté listo al abrir la cámara
   const hoy = iso(hoyHN());
   const rows = await q(sb.from('pl_marcajes').select('*').eq('empleado_id', S.yo.id).eq('anulado', false).gte('fecha', addDias(hoy, -13)).order('marcado_en', { ascending: false }));
   let mh = null; try { mh = await q(sb.rpc('pl_mi_horario')); } catch (_) { }
@@ -2634,7 +2708,7 @@ async function vMarcar() {
       <div class="segm marcas-seg">${opciones.map(([t, n]) => `<button type="button" data-t="${t}" class="${t === sugerida ? 'on' : ''}">${n}</button>`).join('')}</div>
       <input type="hidden" name="tipo" value="${sugerida || opciones[0][0]}">
       <label class="f">Nota (opcional)<input class="inp" name="nota" placeholder="Ej.: visita a cliente en Choloma"></label>
-      <div class="small muted" id="estado">${ICON.camara.replace('<svg', '<svg width="14" height="14" style="vertical-align:-2px"')} Se tomará una selfie y tu ubicación. La hora la pone el sistema.</div>
+      <div class="small muted" id="estado">${ICON.camara.replace('<svg', '<svg width="14" height="14" style="vertical-align:-2px"')} Se tomará una selfie de tu cara y tu ubicación. La hora la pone el sistema.</div>
       <button class="btn pri grande" id="bm">${ICON.marca}Marcar ${nomMarca(sugerida || opciones[0][0]).toLowerCase()}</button></form></div>`
       : `<div class="vacio"><b>Día completo</b>Ya marcaste tu salida. Trabajaste ${fmtHoras(horasTrabajadas(d))}.</div>`}
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px;flex-wrap:wrap"><h2>Últimos 14 días</h2><button class="btn sm borde" id="olvido">Olvidé marcar</button></div>
@@ -2665,7 +2739,7 @@ async function vMarcar() {
       const ruta = `${S.yo.id}/${hoy}/${x.tipo}-${Date.now()}.jpg`;
       const up = await sb.storage.from('pl-marcajes').upload(ruta, foto, { contentType: 'image/jpeg', upsert: false });
       if (up.error) throw up.error;
-      const r = await q(sb.rpc('pl_marcar', { p_tipo: x.tipo, p_lat: g.lat, p_lng: g.lng, p_precision: g.prec, p_foto: ruta, p_nota: x.nota || null, p_dispositivo: navigator.userAgent.slice(0, 200), p_disp_id: idDispositivo(), p_foto_vivo: foto.vivo !== false }));
+      const r = await q(sb.rpc('pl_marcar', { p_tipo: x.tipo, p_lat: g.lat, p_lng: g.lng, p_precision: g.prec, p_foto: ruta, p_nota: x.nota || null, p_dispositivo: navigator.userAgent.slice(0, 200), p_disp_id: idDispositivo(), p_foto_vivo: foto.vivo !== false, p_rostro: foto.rostro === true }));
       const al = r.alertas || [];
       toast(al.length ? `${nomMarca(x.tipo)} guardada a las ${hora(r.marcado_en)}. Queda por revisar: ${al.map(a => (ALERTAS_MK[a]?.[0] || a).toLowerCase()).join(', ')}` : `${nomMarca(x.tipo)} marcada a las ${hora(r.marcado_en)}`, !!al.length);
       _recMk = null; vMarcar();
@@ -4298,7 +4372,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '61';
+const APP_VERSION = '62';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
