@@ -1,0 +1,7 @@
+-- v63 (11-nov-2026). Aplicadas como `pl_marcaje_intentos_y_ubicacion_aprox` y `pl_marcaje_intentos_permisos`.
+-- 1) Tabla pl_marcaje_intentos: bitácora de cada vez que el empleado toca "Marcar".
+--    Columnas: id, empresa_id, empleado_id, fecha, tipo, iniciado_en (hora del servidor), estado (iniciado|guardado|fallo|cancelado),
+--    paso (selfie|ubicacion|foto|guardar), detalle, marcaje_id, terminado_en, dispositivo.
+--    Trigger pl_tg_marcaje_intento: el servidor pone empleado, empresa, fecha y hora; al actualizar solo cambian estado, paso, detalle y marcaje_id.
+--    RLS: el empleado inserta/actualiza/ve los suyos; supervisión y administración ven los de su empresa. Sin acceso para anon; sin delete/truncate para authenticated.
+-- 2) pl_marcar: una precisión mayor a `marcaje_precision_max` (150 m) ya no rechaza el marcaje; lo guarda con la alerta 'ubicacion_aprox'.

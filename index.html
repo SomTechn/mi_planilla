@@ -389,6 +389,12 @@ body.bloqueada #app{visibility:hidden}
 .selfie.trasera{aspect-ratio:4/3}
 .selfie-msg{position:absolute;left:0;right:0;bottom:0;padding:10px;text-align:center;background:linear-gradient(transparent,rgba(10,42,102,.85));color:#fff!important}
 .selfie-msg:empty{display:none}
+.espera-mk{position:fixed;inset:0;z-index:400;background:rgba(10,42,102,.94);display:grid;place-items:center;padding:24px;text-align:center;color:#fff}
+.espera-mk>div{max-width:320px;display:grid;gap:12px;justify-items:center}
+.espera-mk i{width:54px;height:54px;border-radius:50%;border:5px solid rgba(255,255,255,.25);border-top-color:#fff;animation:giraMk .9s linear infinite}
+.espera-mk b{font-size:19px;line-height:1.3}.espera-mk p{margin:0;font-size:14px;line-height:1.45;color:rgba(255,255,255,.85)}
+.espera-mk.ok i{animation:none;border-color:#2ECC71;background:#2ECC71 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/30px no-repeat}
+@keyframes giraMk{to{transform:rotate(360deg)}}
 .selfie-ovalo{position:absolute;left:50%;top:46%;width:62%;aspect-ratio:3/4;transform:translate(-50%,-50%);border:3px dashed rgba(255,255,255,.9);border-radius:50%;pointer-events:none;box-shadow:0 0 0 999px rgba(10,42,102,.38);transition:border-color .2s}
 .selfie.ok .selfie-ovalo{border:4px solid #2ECC71}
 .selfie.lista .selfie-ovalo{display:none}
@@ -2552,7 +2558,7 @@ async function vMiComprobante(id) {
 /* ===================== MARCAJE: hora, selfie y GPS ===================== */
 const ALERTAS_MK = { fuera_zona: ['Fuera de zona', 'Marcó fuera de la zona de trabajo'], otro_telefono: ['Otro teléfono', 'Marcó desde un teléfono distinto al registrado'],
   gps_repetido: ['GPS repetido', 'La ubicación es idéntica a la de otro día (posible GPS falso)'], salto_imposible: ['Salto imposible', 'Se movió demasiado rápido desde el marcaje anterior (posible GPS falso)'],
-  foto_respaldo: ['Foto no en vivo', 'La selfie no se tomó con la cámara en vivo de la app'], sin_rostro: ['Sin rostro', 'El teléfono no pudo comprobar que hubiera una cara en la selfie'], olvido: ['Olvidó marcar', 'El empleado pidió agregar este marcaje porque no marcó'] };
+  foto_respaldo: ['Foto no en vivo', 'La selfie no se tomó con la cámara en vivo de la app'], sin_rostro: ['Sin rostro', 'El teléfono no pudo comprobar que hubiera una cara en la selfie'], ubicacion_aprox: ['Ubicación aproximada', 'El teléfono no logró señal de GPS; la ubicación es aproximada'], olvido: ['Olvidó marcar', 'El empleado pidió agregar este marcaje porque no marcó'] };
 const chipsAlerta = al => (al || []).map(a => `<span class="mk-al" title="${esc(ALERTAS_MK[a]?.[1] || a)}">${esc(ALERTAS_MK[a]?.[0] || a)}</span>`).join(' ');
 // identificador de este teléfono (se registra con el primer marcaje)
 function idDispositivo() { try { let d = localStorage.getItem('mp_disp'); if (!d) { d = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)); localStorage.setItem('mp_disp', d); } return d; } catch (_) { return null; } }
@@ -2694,6 +2700,7 @@ async function vMarcar() {
   try { S.par = await parametros(); } catch (_) { }
   if (!marcajeActivo()) return shell('<div class="vacio"><b>El marcaje no está activado</b>Administración lo puede activar en Ajustes.</div>');
   cargarRostro(); // va preparando el detector de rostro para que esté listo al abrir la cámara
+  gpsBuscar(); // y la ubicación, para que al marcar ya esté lista
   const hoy = iso(hoyHN());
   const rows = await q(sb.from('pl_marcajes').select('*').eq('empleado_id', S.yo.id).eq('anulado', false).gte('fecha', addDias(hoy, -13)).order('marcado_en', { ascending: false }));
   let mh = null; try { mh = await q(sb.rpc('pl_mi_horario')); } catch (_) { }
@@ -2726,24 +2733,41 @@ async function vMarcar() {
   };
   const f = $('#fm', m); if (!f) return;
   $$('.segm button', f).forEach(b => b.onclick = () => { $$('.segm button', f).forEach(x => x.classList.toggle('on', x === b)); f.tipo.value = b.dataset.t; $('#bm', m).innerHTML = `${ICON.marca}Marcar ${nomMarca(b.dataset.t).toLowerCase()}`; });
+  let selfieLista = null; // si falla la ubicación o la red, no se repite la selfie
   f.onsubmit = async e => {
     e.preventDefault(); const x = formData(f); const b = $('#bm', m); const est = $('#estado', m);
-    b.disabled = true;
+    b.disabled = true; est.style.cssText = '';
+    let paso = 'selfie'; const intento = intentoIniciar(x.tipo); // registra la hora en que se tocó el botón
     try {
-      est.textContent = 'Obteniendo ubicación…';
-      const gpsP = obtenerGPS();
-      const foto = await tomarSelfie();
-      if (!foto) { b.disabled = false; est.textContent = 'Marcaje cancelado: se necesita la selfie.'; return; }
-      const g = await gpsP;
-      est.textContent = 'Guardando…';
+      gpsBuscar();
+      let foto = selfieLista && Date.now() - selfieLista.t < 180000 ? selfieLista.foto : null;
+      if (!foto) {
+        est.textContent = 'Abriendo la cámara…';
+        foto = await tomarSelfie();
+        if (!foto) { intentoFin(intento, 'cancelado', paso); b.disabled = false; est.textContent = 'Marcaje cancelado: se necesita la selfie.'; return; }
+        selfieLista = { foto, t: Date.now() };
+      }
+      paso = 'ubicacion'; esperaMk('Buscando tu ubicación…'); est.textContent = 'Buscando tu ubicación…';
+      const g = await gpsMejor();
+      paso = 'foto'; esperaMk('Guardando tu marcaje…'); est.textContent = 'Guardando…';
+      const LENTA = 'La conexión está muy lenta y no se pudo guardar. Revisa tu internet y toca el botón de nuevo';
       const ruta = `${S.yo.id}/${hoy}/${x.tipo}-${Date.now()}.jpg`;
-      const up = await sb.storage.from('pl-marcajes').upload(ruta, foto, { contentType: 'image/jpeg', upsert: false });
+      const up = await conLimite(sb.storage.from('pl-marcajes').upload(ruta, foto, { contentType: 'image/jpeg', upsert: false }), 45000, LENTA);
       if (up.error) throw up.error;
-      const r = await q(sb.rpc('pl_marcar', { p_tipo: x.tipo, p_lat: g.lat, p_lng: g.lng, p_precision: g.prec, p_foto: ruta, p_nota: x.nota || null, p_dispositivo: navigator.userAgent.slice(0, 200), p_disp_id: idDispositivo(), p_foto_vivo: foto.vivo !== false, p_rostro: foto.rostro === true }));
+      paso = 'guardar';
+      const r = await conLimite(q(sb.rpc('pl_marcar', { p_tipo: x.tipo, p_lat: g.lat, p_lng: g.lng, p_precision: g.prec, p_foto: ruta, p_nota: x.nota || null, p_dispositivo: navigator.userAgent.slice(0, 200), p_disp_id: idDispositivo(), p_foto_vivo: foto.vivo !== false, p_rostro: foto.rostro === true })), 30000, LENTA);
+      intentoFin(intento, 'guardado', paso, null, r.id);
+      selfieLista = null; gpsParar();
       const al = r.alertas || [];
-      toast(al.length ? `${nomMarca(x.tipo)} guardada a las ${hora(r.marcado_en)}. Queda por revisar: ${al.map(a => (ALERTAS_MK[a]?.[0] || a).toLowerCase()).join(', ')}` : `${nomMarca(x.tipo)} marcada a las ${hora(r.marcado_en)}`, !!al.length);
+      esperaMkFin(`${nomMarca(x.tipo)} marcada a las ${hora(r.marcado_en)}`);
+      if (al.length) toast(`${nomMarca(x.tipo)} guardada a las ${hora(r.marcado_en)}. Queda por revisar: ${al.map(a => (ALERTAS_MK[a]?.[0] || a).toLowerCase()).join(', ')}`, true);
       _recMk = null; vMarcar();
-    } catch (er) { b.disabled = false; est.textContent = errMsg(er); toast(errMsg(er), true); }
+    } catch (er) {
+      const msg = errMsg(er); intentoFin(intento, 'fallo', paso, msg); esperaMkFin();
+      if (/^Ya marcaste/.test(msg)) { selfieLista = null; toast(msg, true); _recMk = null; return vMarcar(); } // ya estaba guardado
+      b.disabled = false; const txt = msg + (selfieLista && paso !== 'selfie' ? '. No tendrás que repetir la selfie.' : '');
+      est.style.cssText = 'color:#C0392B;font-weight:600'; est.textContent = 'No se guardó: ' + txt; toast('Tu marcaje NO se guardó', true);
+    }
   };
 }
 async function urlsFotos(paths) {
@@ -2768,6 +2792,11 @@ async function vMarcajesDia(fecha) {
     q(sb.from('pl_marcajes').select('*').eq('fecha', fecha).order('marcado_en')),
     q(sb.rpc('pl_marcaje_resumen', { p_desde: fecha, p_hasta: fecha })), quincenasSalario(),
     q(sb.rpc('pl_alertas_marcaje', { p_fecha: fecha })).catch(() => null)]);
+  const ints = await q(sb.from('pl_marcaje_intentos').select('*').eq('fecha', fecha).order('iniciado_en')).catch(() => []);
+  const intsDe = (emp, tipo) => ints.filter(i => i.empleado_id === emp && i.tipo === tipo);
+  // primer intento del empleado para esa marca, si fue 2 min o más antes de la hora en que quedó guardada
+  const demora = r => { const i = intsDe(r.empleado_id, r.tipo)[0]; const g = new Date(r.hora_original || r.marcado_en); return i && r.origen === 'empleado' && g - new Date(i.iniciado_en) >= 120000 ? i : null; };
+  const intTxt = i => i.estado === 'guardado' ? 'guardado' : i.estado === 'cancelado' ? 'cancelado por el empleado' : i.estado === 'fallo' ? `falló en ${PASOS_MK[i.paso] || 'el envío'}${i.detalle ? ': ' + esc(i.detalle) : ''}` : 'sin terminar (la app se cerró o quedó esperando)';
   const emps = emps0.filter(e => e.activo);
   const urls = await urlsFotos(rows.map(r => r.foto_path));
   const val = rows.filter(r => !r.anulado);
@@ -2777,7 +2806,7 @@ async function vMarcajesDia(fecha) {
   const propio = id => !S.admin && S.yo && id === S.yo.id;
   const pend = val.filter(r => r.estado === 'pendiente' && !propio(r.empleado_id));
   const per = quincenaDe(pers, fecha);
-  const celda = (e, t, r) => r ? `<button class="marca-cel mk-${r.estado}" data-mk="${r.id}" title="${EST_MK[r.estado] || ''}">${urls[r.foto_path] ? `<img src="${urls[r.foto_path]}" alt="">` : '<span class="sinfoto"></span>'}<span><b>${hora(r.marcado_en)}</b><small class="tiny">${r.hora_original ? 'editado · ' : r.origen === 'admin' ? 'manual · ' : r.origen === 'solicitud' ? 'solicitado · ' : r.auto_aprobado ? 'automático · ' : ''}${EST_MK[r.estado] || ''}</small>${r.alertas?.length ? `<small>${chipsAlerta(r.alertas)}</small>` : ''}${r.precision_m > 100 ? `<small class="tiny" style="color:#8A6A00">GPS ±${Math.round(r.precision_m)} m</small>` : ''}</span></button>`
+  const celda = (e, t, r) => r ? `<button class="marca-cel mk-${r.estado}" data-mk="${r.id}" title="${EST_MK[r.estado] || ''}">${urls[r.foto_path] ? `<img src="${urls[r.foto_path]}" alt="">` : '<span class="sinfoto"></span>'}<span><b>${hora(r.marcado_en)}</b><small class="tiny">${r.hora_original ? 'editado · ' : r.origen === 'admin' ? 'manual · ' : r.origen === 'solicitud' ? 'solicitado · ' : r.auto_aprobado ? 'automático · ' : ''}${EST_MK[r.estado] || ''}</small>${r.alertas?.length ? `<small>${chipsAlerta(r.alertas)}</small>` : ''}${r.precision_m >= 100 ? `<small class="tiny" style="color:#8A6A00">GPS ±${Math.round(r.precision_m)} m</small>` : ''}${demora(r) ? `<small class="tiny" style="color:#B45309">1er intento ${hora(demora(r).iniciado_en)}</small>` : ''}</span></button>`
     : (propio(e.id) || fecha > hoy ? '<span class="muted">—</span>' : `<button class="btn sm borde mk-add" data-add="${e.id}|${t}" title="Agregar marcaje manual">+ Agregar</button>`);
   const result = e => { const r = rs[e.id]; if (!r) return ''; const p = [];
     if (+r.tarde_min) p.push(`<span class="chip red">Tarde ${minTxt(r.tarde_min)}</span>`);
@@ -2793,6 +2822,7 @@ async function vMarcajesDia(fecha) {
       ${alr.marcajes.length ? `<div class="panel"><h4>⚠ ${alr.marcajes.length} marcajes con alertas por revisar</h4>${alr.marcajes.map(a => `<div class="small">${esc(corto(a.nombre))} · ${nomMarca(a.tipo).toLowerCase()} ${hora(a.marcado_en)} ${chipsAlerta(a.alertas)}${a.distancia_m != null && a.alertas.includes('fuera_zona') ? ` <span class="tiny muted">a ${N(a.distancia_m)} m</span>` : ''}</div>`).join('')}</div>` : ''}
       ${alr.sin_entrada.length ? `<div class="panel"><h4>No marcaron entrada (${alr.sin_entrada.length})</h4>${alr.sin_entrada.map(a => `<div class="small">${esc(corto(a.nombre))} <span class="tiny muted">· horario ${horaCorta(a.entrada)}</span></div>`).join('')}</div>` : ''}
       ${alr.sin_salida.length ? `<div class="panel"><h4>No marcaron salida (${alr.sin_salida.length})</h4>${alr.sin_salida.map(a => `<div class="small">${esc(corto(a.nombre))}</div>`).join('')}</div>` : ''}</div>` : ''}
+    ${(() => { const sg = ints.filter(i => i.estado !== 'guardado' && i.estado !== 'cancelado' && !(por[i.empleado_id] || {})[i.tipo]); return sg.length ? `<div class="mk-alertas"><div class="panel"><h4>Intentaron marcar y no se guardó (${sg.length})</h4>${sg.map(i => `<div class="small">${esc(corto(emps0.find(e => e.id === i.empleado_id)?.nombre || ''))} · ${nomMarca(i.tipo).toLowerCase()} ${hora(i.iniciado_en)} <span class="tiny muted">${intTxt(i)}</span></div>`).join('')}</div></div>` : ''; })()}
     <div class="mk-ley"><span><i class="mk-pt pendiente"></i>Por revisar</span><span><i class="mk-pt aprobado"></i>Aprobado</span><span class="small muted">Los marcajes sin alertas se aprueban solos. Toca un marcaje para aprobar, editar la hora o rechazar.</span></div>
     <div class="tscroll"><table class="t marcas-t"><thead><tr><th>Empleado</th><th>Entrada</th><th>Salida a almuerzo</th><th>Regreso</th><th>Salida</th><th>Resultado</th></tr></thead><tbody>
       ${lista.map(e => { const d = por[e.id] || {}; return `<tr><td><b>${esc(e.nombre)}</b><div class="tiny muted">Horario: ${horarioTxt(rs[e.id] && !rs[e.id].sin_horario ? rs[e.id] : null)}</div></td>${TIPOS_MARCA.map(([t]) => `<td>${celda(e, t, d[t])}</td>`).join('')}<td>${result(e)}</td></tr>`; }).join('')}
@@ -2816,11 +2846,12 @@ async function vMarcajesDia(fecha) {
       <div class="panel small" style="margin-top:12px"><div class="cp-dato"><span>Hora</span><span><b>${fdt(r.marcado_en)}</b></span></div>
       ${r.hora_original ? `<div class="cp-dato"><span>Hora original</span><span>${fdt(r.hora_original)} · ${esc(r.motivo_edicion || '')}</span></div>` : r.origen === 'admin' ? `<div class="cp-dato"><span>Manual</span><span>${esc(r.motivo_edicion || r.nota || '')}</span></div>` : ''}
       <div class="cp-dato"><span>Estado</span><span>${EST_MK[r.estado] || ''}${r.auto_aprobado ? ' automáticamente' : ''}${r.revisado_en ? ' · ' + fdt(r.revisado_en) : ''}</span></div>
+      ${intsDe(r.empleado_id, r.tipo).length && (demora(r) || intsDe(r.empleado_id, r.tipo).length > 1) ? `<div class="cp-dato"><span>Intentos</span><span style="text-align:right">${intsDe(r.empleado_id, r.tipo).map(i => `<div><b>${hora(i.iniciado_en)}</b> <span class="tiny muted">${intTxt(i)}</span></div>`).join('')}${demora(r) && puede && !r.anulado ? `<button type="button" class="btn sm borde" data-usar-int="${new Date(demora(r).iniciado_en).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Tegucigalpa' })}" style="margin-top:6px">Usar la hora del primer intento</button>` : ''}</span></div>` : ''}
       ${r.alertas?.length ? `<div class="cp-dato"><span>Alertas</span><span style="text-align:right">${r.alertas.map(a => `<div>${chipsAlerta([a])} <span class="tiny muted">${esc(ALERTAS_MK[a]?.[1] || '')}</span></div>`).join('')}</span></div>` : ''}
       ${r.distancia_m != null ? `<div class="cp-dato"><span>Distancia a la zona</span><span>${N(r.distancia_m)} m${r.zona_id ? ' · dentro' : ' · fuera'}</span></div>` : ''}
       ${r.origen === 'solicitud' ? `<div class="cp-dato"><span>Solicitud</span><span>${esc(r.motivo_edicion || '')}</span></div>` : ''}
       ${rs[r.empleado_id] && !rs[r.empleado_id].sin_horario ? `<div class="cp-dato"><span>Horario del día</span><span>${horarioTxt(rs[r.empleado_id])}</span></div>` : ''}
-      ${r.lat != null ? `<div class="cp-dato"><span>Ubicación</span><span>${mapsLink(r.lat, r.lng)} ${r.precision_m ? `±${Math.round(r.precision_m)} m` : ''}</span></div>` : ''}
+      ${r.lat != null ? `<div class="cp-dato"><span>Ubicación</span><span>${mapsLink(r.lat, r.lng)} ${r.precision_m ? `±${Math.round(r.precision_m)} m${r.precision_m >= 100 ? ' (aproximada, sin señal de GPS)' : ''}` : ''}</span></div>` : ''}
       ${r.nota ? `<div class="cp-dato"><span>Nota</span><span>${esc(r.nota)}</span></div>` : ''}</div>
       ${!puede ? '<p class="small muted">Tus propios marcajes los revisa administración.</p>' : r.anulado ? '' : `
       <div class="mk-acc">
@@ -2829,6 +2860,7 @@ async function vMarcajesDia(fecha) {
         <form data-f="rech" class="mk-edit"><label class="f" style="flex:1">Rechazar (motivo)<input class="inp" name="motivo" required placeholder="Ej.: foto no corresponde, ubicación fuera de la oficina"></label><button class="btn rojo">Rechazar</button></form>
       </div>`}`, { ancha: true });
     if (r.lat != null) miniMapa($('[data-mapa]', h.el), r.lat, r.lng, r.precision_m);
+    $('[data-usar-int]', h.el) && ($('[data-usar-int]', h.el).onclick = ev => { const fe = $('[data-f="edit"]', h.el); if (!fe) return; fe.hora.value = ev.currentTarget.dataset.usarInt; if (!fe.motivo.value) fe.motivo.value = 'Primer intento de marcar a esa hora; la app demoró en guardar'; fe.motivo.focus(); });
     const fin = msg => { h.cerrar(); toast(msg); recargar(); };
     $('[data-x="ok"]', h.el) && ($('[data-x="ok"]', h.el).onclick = async () => { try { await q(sb.rpc('pl_revisar_marcajes', { p_ids: [r.id], p_accion: 'aprobar' })); fin('Marcaje aprobado'); } catch (er) { toast(errMsg(er), true); } });
     $('[data-f="edit"]', h.el) && ($('[data-f="edit"]', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target); try { await q(sb.rpc('pl_editar_marcaje', { p_id: r.id, p_hora: x.hora, p_motivo: x.motivo })); fin('Hora corregida y aprobada'); } catch (er) { toast(errMsg(er), true); } });
@@ -3368,6 +3400,55 @@ function obtenerGPS() {
       e => rej(new Error(e.code === 1 ? 'Permite el acceso a la ubicación en el navegador para continuar' : 'No se pudo obtener la ubicación. Sal a un lugar abierto e intenta de nuevo')),
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
   });
+}
+/* ----- Ubicación para marcar: se busca desde que se abre la pantalla y nunca se queda esperando sin límite ----- */
+let _gps = { id: null, fix: null, err: null, fin: null };
+function gpsBuscar() {
+  if (!navigator.geolocation) return;
+  clearTimeout(_gps.fin); _gps.fin = setTimeout(gpsParar, 180000); // se apaga solo a los 3 min para no gastar batería
+  if (_gps.id != null) return;
+  _gps.err = null;
+  _gps.id = navigator.geolocation.watchPosition(p => {
+    const f = { lat: p.coords.latitude, lng: p.coords.longitude, prec: p.coords.accuracy, t: Date.now() };
+    if (!_gps.fix || f.prec <= _gps.fix.prec || f.t - _gps.fix.t > 20000) _gps.fix = f; // la más precisa, mientras sea reciente
+  }, e => { _gps.err = e.code; }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+}
+function gpsParar() { clearTimeout(_gps.fin); if (_gps.id != null) navigator.geolocation.clearWatch(_gps.id); _gps = { id: null, fix: null, err: null, fin: null }; }
+window.addEventListener('hashchange', () => { if (!location.hash.startsWith('#/marcar')) gpsParar(); });
+// Devuelve la mejor ubicación disponible en un máximo de ~20 s: precisa si se puede, aproximada si no. Nunca espera sin límite.
+async function gpsMejor(maxMs = 12000) {
+  const SIN_PERMISO = 'Permite el acceso a la ubicación en el navegador para continuar';
+  if (!navigator.geolocation) throw new Error('Este teléfono no permite ubicación');
+  gpsBuscar();
+  const t0 = Date.now(), reciente = () => _gps.fix && Date.now() - _gps.fix.t < 60000 ? _gps.fix : null;
+  while (Date.now() - t0 < maxMs) {
+    const f = reciente(); if (f && f.prec <= 50) return f;
+    if (_gps.err === 1) throw new Error(SIN_PERMISO);
+    await new Promise(r => setTimeout(r, 400));
+  }
+  if (reciente()) return reciente();
+  // último recurso: ubicación aproximada (antenas o wifi), con límite propio por si el teléfono no responde
+  const f = await new Promise(res => {
+    const tm = setTimeout(() => res(null), 8000);
+    navigator.geolocation.getCurrentPosition(p => { clearTimeout(tm); res({ lat: p.coords.latitude, lng: p.coords.longitude, prec: p.coords.accuracy, t: Date.now() }); },
+      e => { clearTimeout(tm); if (e.code === 1) _gps.err = 1; res(null); }, { enableHighAccuracy: false, timeout: 7000, maximumAge: 120000 });
+  });
+  if (f) return f;
+  throw new Error(_gps.err === 1 ? SIN_PERMISO : 'No se pudo obtener tu ubicación. Revisa que la ubicación (GPS) del teléfono esté encendida e intenta de nuevo');
+}
+const conLimite = (p, ms, msg) => Promise.race([p, new Promise((_, mal) => setTimeout(() => mal(new Error(msg)), ms))]);
+/* ----- Bitácora de intentos de marcaje: hora (del servidor) en que se tocó "Marcar" y en qué paso terminó ----- */
+async function intentoIniciar(tipo) { try { const { data } = await sb.from('pl_marcaje_intentos').insert({ tipo, dispositivo: navigator.userAgent.slice(0, 200) }).select('id').single(); return data?.id || null; } catch (_) { return null; } }
+async function intentoFin(idP, estado, paso, detalle, marcajeId) { try { const id = await idP; if (id) await sb.from('pl_marcaje_intentos').update({ estado, paso, detalle: detalle ? String(detalle).slice(0, 300) : null, marcaje_id: marcajeId || null }).eq('id', id); } catch (_) { } }
+const PASOS_MK = { selfie: 'la selfie', ubicacion: 'la ubicación', foto: 'subir la foto', guardar: 'guardar' };
+/* ----- Pantalla de espera del marcaje: deja claro que aún no está guardado ----- */
+function esperaMk(txt) {
+  let v = $('.espera-mk'); if (!v) { v = document.createElement('div'); v.className = 'espera-mk'; v.innerHTML = '<div><i></i><b></b><p></p></div>'; document.body.appendChild(v); }
+  clearTimeout(v._t); v.classList.remove('ok'); $('b', v).textContent = txt; $('p', v).textContent = 'Todavía no está guardado. No cierres ni cambies de app hasta ver la confirmación.';
+}
+function esperaMkFin(txtOk) {
+  const v = $('.espera-mk'); if (!v) return; if (!txtOk) return v.remove();
+  v.classList.add('ok'); $('b', v).textContent = txtOk; $('p', v).textContent = 'Tu marcaje quedó guardado.'; v._t = setTimeout(() => v.remove(), 2200); v.onclick = () => v.remove();
 }
 function letras(num) {
   num = Math.round(Number(num) || 0);
@@ -4372,7 +4453,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '62';
+const APP_VERSION = '63';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
