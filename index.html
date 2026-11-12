@@ -2898,7 +2898,6 @@ async function vMarcar() {
   let mh = null; try { mh = await q(sb.rpc('pl_mi_horario')); } catch (_) { }
   const dias = {}; rows.forEach(r => (dias[r.fecha] = dias[r.fecha] || {})[r.tipo] = r);
   const d = dias[hoy] || {};
-  const sig = !d.entrada ? 'entrada' : !d.salida ? (!d.almuerzo_inicio ? null : !d.almuerzo_fin ? 'almuerzo_fin' : 'salida') : null;
   const opciones = TIPOS_MARCA.filter(([t]) => !d[t] && (t === 'entrada' || d.entrada) && !d.salida);
   // ¿quedó un marcaje a medias en la última media hora? (se tocó "Marcar" y no llegó a guardarse)
   let pend = null;
@@ -2908,16 +2907,16 @@ async function vMarcar() {
     pend = its.find(i => opciones.some(([t]) => t === i.tipo) && Date.now() - new Date(i.iniciado_en) < MK_RETRASO_MAX && Date.now() - new Date(i.iniciado_en) > 20000 && (!ult || new Date(i.iniciado_en) > new Date(ult.marcado_en))) || null;
   } catch (_) { }
   _mkPintado = Date.now();
-  const sugerida = pend?.tipo || sig || (d.entrada && !d.salida ? 'salida' : null);
   const m = shell(`<div class="miga"><a href="#/mi-tiempo">Mi tiempo</a></div><div class="top"><div><h1>Marcar</h1><div class="muted small">${DIAS_LARGO[hoyHN().getDay()]} ${fl(hoy)}</div></div></div>
     <div class="hola"><div class="k">Hora actual</div><div class="v" id="reloj">${hora(new Date())}</div>${mh ? `<div class="s">Tu horario hoy: <b>${mh.libre ? 'día libre' : `${horaCorta(mh.entrada)} – ${horaCorta(mh.salida)}`}</b></div>` : ''}<div class="s">${d.entrada ? `Entraste a las ${hora(d.entrada.marcado_en)}${d.salida ? ` · saliste a las ${hora(d.salida.marcado_en)}` : ''}` : 'Aún no marcas tu entrada'}</div></div>
     ${opciones.length ? `<div class="panel"><form id="fm" style="display:grid;gap:12px">
       ${pend ? `<div class="aviso-mk" id="pendmk"><b>Tu ${esc(nomMarca(pend.tipo).toLowerCase())} de las ${hora(pend.iniciado_en)} no se terminó de guardar.</b> Toca el botón para terminarla ahora y quedará con esa hora.</div>` : ''}
-      <div class="segm marcas-seg">${opciones.map(([t, n]) => `<button type="button" data-t="${t}" class="${t === sugerida ? 'on' : ''}">${n}</button>`).join('')}</div>
-      <input type="hidden" name="tipo" value="${sugerida || opciones[0][0]}">
+      <div><div class="small muted" style="margin-bottom:6px">¿Qué vas a marcar? <b>Tócalo tú</b>.</div>
+      <div class="segm marcas-seg">${opciones.map(([t, n]) => `<button type="button" data-t="${t}" aria-pressed="false">${n}</button>`).join('')}</div></div>
+      <input type="hidden" name="tipo" value="">
       <label class="f">Nota (opcional)<input class="inp" name="nota" placeholder="Ej.: visita a cliente en Choloma"></label>
       <div class="small muted" id="estado">${ICON.camara.replace('<svg', '<svg width="14" height="14" style="vertical-align:-2px"')} Se tomará una selfie de tu cara y tu ubicación. La hora la pone el sistema.</div>
-      <button class="btn pri grande" id="bm">${ICON.marca}Marcar ${nomMarca(sugerida || opciones[0][0]).toLowerCase()}</button></form></div>`
+      <button class="btn pri grande" id="bm" disabled>${ICON.marca}Elige qué vas a marcar</button></form></div>`
       : `<div class="vacio"><b>Día completo</b>Ya marcaste tu salida. Trabajaste ${fmtHoras(horasTrabajadas(d))}.</div>`}
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px;flex-wrap:wrap"><h2>Últimos 14 días</h2><button class="btn sm borde" id="olvido">Olvidé marcar</button></div>
     ${Object.keys(dias).length ? `<div class="tscroll"><table class="t"><thead><tr><th>Fecha</th><th>Entrada</th><th>Almuerzo</th><th>Salida</th><th class="r">Horas</th></tr></thead><tbody>${Object.entries(dias).map(([f, x]) => `<tr><td>${DIAS_LARGO[pf(f).getDay()].slice(0, 3)} ${fc(f)}</td><td>${celMia(x.entrada)}</td><td class="small">${x.almuerzo_inicio ? `${hora(x.almuerzo_inicio.marcado_en)} – ${hora(x.almuerzo_fin?.marcado_en)}` : '—'}</td><td>${celMia(x.salida)}</td><td class="r num">${fmtHoras(horasTrabajadas(x))}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vacio">Sin marcajes todavía.</div>'}`);
@@ -2926,17 +2925,19 @@ async function vMarcar() {
     const fechas = [0, 1, 2, 3].map(n => addDias(hoy, -n));
     const h = hoja('Olvidé marcar', `<form style="display:grid;gap:12px"><p class="small muted" style="margin:0">Pide agregar un marcaje que olvidaste (hasta 3 días atrás). Tu supervisor lo revisa.</p>
       <div class="row2"><label class="f">Día<select class="inp" name="fecha">${fechas.map(f2 => `<option value="${f2}">${DIAS_LARGO[pf(f2).getDay()]} ${fc(f2)}</option>`).join('')}</select></label>
-      <label class="f">¿Qué marcaje?<select class="inp" name="tipo">${TIPOS_MARCA.map(([t, n]) => `<option value="${t}" ${t === 'salida' ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
+      <label class="f">¿Qué marcaje?<select class="inp" name="tipo" required><option value="">Elige…</option>${TIPOS_MARCA.map(([t, n]) => `<option value="${t}">${n}</option>`).join('')}</select></label></div>
       <label class="f">Hora real<input class="inp" type="time" name="hora" required></label>
       <label class="f">¿Por qué no marcaste?<input class="inp" name="motivo" required maxlength="200" placeholder="Ej.: se me descargó el teléfono"></label>
       <div class="pie"><button class="btn pri">Enviar solicitud</button></div></form>`);
     $('form', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target); try { await q(sb.rpc('pl_solicitar_marcaje', { p_fecha: x.fecha, p_tipo: x.tipo, p_hora: x.hora, p_motivo: x.motivo })); h.cerrar(); toast('Solicitud enviada'); _recMk = null; vMarcar(); } catch (er) { toast(errMsg(er), true); } };
   };
   const f = $('#fm', m); if (!f) return;
-  $$('.segm button', f).forEach(b => b.onclick = () => { $$('.segm button', f).forEach(x => x.classList.toggle('on', x === b)); f.tipo.value = b.dataset.t; $('#bm', m).innerHTML = `${ICON.marca}Marcar ${nomMarca(b.dataset.t).toLowerCase()}`; });
+  // ninguna opción viene marcada: la persona elige (evita marcar "salida" cuando era "salida a almuerzo")
+  $$('.segm button', f).forEach(b => b.onclick = () => { $$('.segm button', f).forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); }); f.tipo.value = b.dataset.t; const bm = $('#bm', m); bm.disabled = false; bm.innerHTML = `${ICON.marca}Marcar ${nomMarca(b.dataset.t).toLowerCase()}`; });
   let selfieLista = null; // si falla la ubicación o la red, no se repite la selfie
   f.onsubmit = async e => {
     e.preventDefault(); const x = formData(f); const b = $('#bm', m); const est = $('#estado', m);
+    if (!x.tipo) { toast('Elige qué vas a marcar', true); return; }
     b.disabled = true; est.style.cssText = '';
     let paso = 'selfie'; const intento = intentoIniciar(x.tipo); // registra la hora en que se tocó el botón
     try {
@@ -4661,7 +4662,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '66';
+const APP_VERSION = '67';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
