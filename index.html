@@ -755,8 +755,9 @@ window.salir = salir;
 const tokenClave = () => 'mp_disp_token_' + (S.user?.id || '');
 const tokenDisp = () => { try { return localStorage.getItem(tokenClave()) || ''; } catch (_) { return ''; } };
 const guardarTokenDisp = t => { try { localStorage.setItem(tokenClave(), t); } catch (_) { } };
+let _accT = 0;
 async function verificarAcceso() {
-  let r;
+  let r; _accT = Date.now();
   try { r = await q(sb.rpc('pl_acceso', { p_token: tokenDisp() || null, p_disp: idDispositivo(), p_agente: navigator.userAgent.slice(0, 300) })); }
   catch (_) { return true; } // sin red: el servidor igual protege los datos
   if (r?.token) guardarTokenDisp(r.token);
@@ -765,6 +766,17 @@ async function verificarAcceso() {
   pintarCodigoAcceso(r || {});
   return false;
 }
+// La app suele quedar abierta en el teléfono: al volver a ella (máximo cada 5 min) se revisa de nuevo,
+// así el dispositivo queda registrado aunque no se haya cerrado la app y una sesión cerrada por administración lo sabe al momento.
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible' || !S.user || Date.now() - _accT < 5 * 60000 || $('.codigo-acc')) return;
+  _accT = Date.now();
+  try {
+    const r = await q(sb.rpc('pl_acceso', { p_token: tokenDisp() || null, p_disp: idDispositivo(), p_agente: navigator.userAgent.slice(0, 300) }));
+    if (r?.token) guardarTokenDisp(r.token);
+    if (r && !r.autorizado) pintarCodigoAcceso(r);
+  } catch (_) { }
+});
 function pintarCodigoAcceso(r) {
   const caja = cuerpo => `<div class="login"><div class="login-in">
     <div class="login-logo-wrap"><img class="login-logo" src="${APP_LOGO_IMG}" alt="Mi Planilla"></div>
@@ -4649,7 +4661,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '65';
+const APP_VERSION = '66';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
