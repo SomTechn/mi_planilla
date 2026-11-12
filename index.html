@@ -389,6 +389,25 @@ body.bloqueada #app{visibility:hidden}
 .selfie.trasera{aspect-ratio:4/3}
 .selfie-msg{position:absolute;left:0;right:0;bottom:0;padding:10px;text-align:center;background:linear-gradient(transparent,rgba(10,42,102,.85));color:#fff!important}
 .selfie-msg:empty{display:none}
+.codigo-acc{display:grid;gap:12px;background:#fff;border-radius:var(--r-l);padding:22px 20px;box-shadow:var(--sombra)}
+.codigo-acc h2{margin:0;font-size:20px}.codigo-acc p{margin:0;color:var(--gris);font-size:14px;line-height:1.45}
+.codigo-inp{text-align:center;font-size:30px;letter-spacing:10px;font-weight:700;font-family:Poppins;padding:12px}
+.codigo-gen{display:grid;gap:10px;text-align:center;padding:6px 0}
+.codigo-num{font-family:Poppins;font-size:42px;font-weight:800;letter-spacing:6px;color:var(--tinta);background:var(--suave);border-radius:14px;padding:14px 0}
+.acceso-panel{display:flex;gap:14px;align-items:center;justify-content:space-between;border-left:4px solid #C7D2E4;margin-bottom:14px}
+.acceso-panel.on{border-left-color:var(--verde)}
+.acceso-panel .btn{flex:none}
+.disp-nom{display:flex;gap:8px;align-items:center}
+.disp-ico{width:30px;height:30px;border-radius:9px;background:var(--suave);display:grid;place-items:center;flex:none;color:var(--tinta)}
+.disp-ico svg{width:17px;height:17px}
+.disp-acc{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.disp-ses{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:2px 0}
+tr.disp-bloq td{opacity:.75}
+.tot.alerta{border-color:#F5B041;background:#FFF8EC}
+.sec-t{font-size:16px;margin:20px 0 10px;display:flex;gap:8px;align-items:center}
+.filtro-disp{max-width:320px}
+.det-otras summary{cursor:pointer;list-style:none}.det-otras summary::-webkit-details-marker{display:none}
+@media (max-width:640px){.acceso-panel{flex-direction:column;align-items:stretch}.disp-acc{justify-content:flex-start}.filtro-disp{max-width:none}}
 .aviso-mk{background:#FFF4E5;border:1.5px solid #F5B041;color:#7A4A00;border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.4}
 .espera-mk{position:fixed;inset:0;z-index:400;background:rgba(10,42,102,.94);display:grid;place-items:center;padding:24px;text-align:center;color:#fff}
 .espera-mk>div{max-width:320px;display:grid;gap:12px;justify-items:center}
@@ -658,6 +677,7 @@ const ICON = {
   prestamo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9.5v5M18 9.5v5"/></svg>',
   adelanto: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>',
   ajustes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
+  disp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 18h3"/></svg>',
   yo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4z"/><path d="M4 9h16M8 14h4"/></svg>',
   print: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>',
   wa: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.3 14.2c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.5-3.9-4.7-4.1-.1-.2-1.1-1.5-1.1-2.9s.7-2.1 1-2.4c.3-.3.6-.3.8-.3h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2.1.4 0 .5l-.3.5-.4.5c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.4 2.4 1.5.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.3.1.2.1.7-.1 1.3z"/></svg>',
@@ -700,6 +720,7 @@ async function iniciar() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return publico();
   S.user = session.user;
+  if (!(await verificarAcceso())) return;
   try {
     S.admin = !!(await q(sb.rpc('pl_es_admin')));
     S.yo = await q(sb.from('pl_empleados').select('*').eq('user_id', S.user.id).maybeSingle());
@@ -725,6 +746,163 @@ async function iniciar() {
 const inicioRol = () => S.admin ? '#/planillas' : S.supervisor ? '#/asistencia' : S.yo ? '#/mis-pagos' : '#/plataforma';
 async function salir() { await soltarPush(); await sb.auth.signOut(); S.user = null; S.admin = false; S.yo = null; location.hash = ''; pintarLogin(); }
 window.salir = salir;
+
+/* ===================== dispositivos y código de acceso =====================
+   Al abrir la app, el servidor revisa si este dispositivo está autorizado (pl_acceso).
+   Interruptor apagado: el dispositivo queda registrado y autorizado solo.
+   Encendido: un dispositivo nuevo necesita un código de un solo uso que genera administración.
+   El token del dispositivo se guarda solo en este teléfono, uno por usuario. */
+const tokenClave = () => 'mp_disp_token_' + (S.user?.id || '');
+const tokenDisp = () => { try { return localStorage.getItem(tokenClave()) || ''; } catch (_) { return ''; } };
+const guardarTokenDisp = t => { try { localStorage.setItem(tokenClave(), t); } catch (_) { } };
+async function verificarAcceso() {
+  let r;
+  try { r = await q(sb.rpc('pl_acceso', { p_token: tokenDisp() || null, p_disp: idDispositivo(), p_agente: navigator.userAgent.slice(0, 300) })); }
+  catch (_) { return true; } // sin red: el servidor igual protege los datos
+  if (r?.token) guardarTokenDisp(r.token);
+  S.disp = r?.dispositivo || null;
+  if (r?.autorizado) return true;
+  pintarCodigoAcceso(r || {});
+  return false;
+}
+function pintarCodigoAcceso(r) {
+  const caja = cuerpo => `<div class="login"><div class="login-in">
+    <div class="login-logo-wrap"><img class="login-logo" src="${APP_LOGO_IMG}" alt="Mi Planilla"></div>
+    <p class="login-sub">${esc(empNombre() || 'Mi Planilla')}</p>${cuerpo}</div></div>`;
+  if (r.bloqueado || r.cerrada) {
+    app.innerHTML = caja(`<div class="codigo-acc"><h2>${r.bloqueado ? 'Dispositivo bloqueado' : 'Sesión cerrada'}</h2>
+      <p>${r.bloqueado ? 'Administración bloqueó este dispositivo. Si crees que es un error, habla con tu administrador o gerente.' : 'Administración cerró tu sesión en este dispositivo. Vuelve a iniciar sesión.'}</p>
+      <button class="btn pri" type="button" onclick="salir()">${r.bloqueado ? 'Cerrar sesión' : 'Volver a ingresar'}</button></div>`);
+    return;
+  }
+  app.innerHTML = caja(`<form class="codigo-acc" id="fcod" autocomplete="off">
+      <h2>Código de acceso</h2>
+      <p>Este dispositivo todavía no está autorizado. Pide a tu administrador o gerente un <b>código de acceso</b> y escríbelo aquí. Solo se pide una vez en cada dispositivo.</p>
+      <input class="inp codigo-inp" name="c" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="••••••" required aria-label="Código de 6 dígitos">
+      <div class="err hidden" id="cerr"></div>
+      <button class="btn pri" type="submit">Entrar</button>
+      <button class="btn borde" type="button" onclick="salir()">Cerrar sesión</button>
+    </form>`);
+  const f = $('#fcod'), inp = f.c; inp.focus();
+  inp.oninput = () => { inp.value = inp.value.replace(/\D/g, '').slice(0, 6); };
+  f.onsubmit = async e => {
+    e.preventDefault(); const b = $('button[type=submit]', f), err = $('#cerr'); b.disabled = true; err.classList.add('hidden');
+    try {
+      const x = await q(sb.rpc('pl_canjear_codigo', { p_codigo: inp.value, p_disp: idDispositivo(), p_agente: navigator.userAgent.slice(0, 300) }));
+      if (!x?.ok) { err.textContent = x?.error || 'No se pudo verificar el código'; err.classList.remove('hidden'); b.disabled = false; inp.select(); return; }
+      guardarTokenDisp(x.token); toast('Dispositivo autorizado'); iniciar();
+    } catch (er) { err.textContent = errMsg(er); err.classList.remove('hidden'); b.disabled = false; }
+  };
+}
+// "Android 10 · Chrome 155", "Windows · Edge 140", "iPhone · Safari"
+function agenteCorto(ua) {
+  ua = String(ua || ''); if (!ua) return 'Desconocido';
+  const so = /Android ([\d.]+)/.exec(ua) ? 'Android ' + /Android ([\d.]+)/.exec(ua)[1] : /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'Mac' : /CrOS/.test(ua) ? 'Chromebook' : /Linux/.test(ua) ? 'Linux' : 'Otro';
+  const m = /SamsungBrowser\/(\d+)/.exec(ua) || /Edg\/(\d+)/.exec(ua) || /OPR\/(\d+)/.exec(ua) || /Firefox\/(\d+)/.exec(ua) || /Chrome\/(\d+)/.exec(ua) || /Version\/(\d+).*Safari/.exec(ua);
+  const nav = !m ? '' : /Samsung/.test(m[0]) ? 'Samsung Internet' : /Edg/.test(m[0]) ? 'Edge' : /OPR/.test(m[0]) ? 'Opera' : /Firefox/.test(m[0]) ? 'Firefox' : /Chrome/.test(m[0]) ? 'Chrome' : 'Safari';
+  return so + (nav ? ` · ${nav} ${m[1]}` : '');
+}
+const esCel = ua => /Android|iPhone|iPad|Mobile/.test(String(ua || ''));
+// nombre puesto por administración; si sigue el automático ("Dispositivo de …"), se muestra el tipo
+const nombreDisp = d => /^Dispositivo de /.test(d.nombre || '') ? (esCel(d.agente) ? 'Teléfono' : 'Computadora') : d.nombre;
+function haceTxt(ts) {
+  if (!ts) return '—'; const m = Math.round((Date.now() - new Date(ts)) / 60000);
+  if (m < 2) return 'ahora'; if (m < 60) return `hace ${m} min`; const h = Math.round(m / 60); if (h < 24) return `hace ${h} h`;
+  const d = Math.round(h / 24); return d < 30 ? `hace ${d} día${d === 1 ? '' : 's'}` : fc(String(ts).slice(0, 10));
+}
+async function vDispositivos() {
+  cargando();
+  const D = await q(sb.rpc('pl_dispositivos_admin'));
+  const filtro = vDispositivos._f || '';
+  const fil = arr => filtro ? arr.filter(x => x.user_id === filtro) : arr;
+  const ico = ua => `<span class="disp-ico ${esCel(ua) ? '' : 'pc'}">${esCel(ua) ? ICON.disp : ICON.planilla}</span>`;
+  const autorizados = fil(D.dispositivos), pend = fil(D.pendientes), otras = fil(D.otras);
+  const nSes = D.dispositivos.reduce((s, d) => s + d.sesiones.length, 0);
+  const filaDisp = d => `<tr class="${d.bloqueado ? 'disp-bloq' : ''}">
+      <td><b>${esc(d.persona)}</b></td>
+      <td><div class="disp-nom">${ico(d.agente)}<span><b>${esc(nombreDisp(d))}</b><div class="tiny muted">${esc(agenteCorto(d.agente))}</div></span></div></td>
+      <td><span class="small">${d.via === 'codigo' ? `Con código${d.autorizado_por ? ' de ' + esc(d.autorizado_por) : ''}` : 'Ya estaba en uso'}</span><div class="tiny muted">${fdt(d.creado_en)}</div></td>
+      <td>${d.bloqueado ? `<span class="chip red">Bloqueado</span><div class="tiny muted">${esc(d.motivo_bloqueo || '')}</div>` : `${haceTxt(d.ultimo_uso)}`}</td>
+      <td>${d.sesiones.length ? d.sesiones.map(x => `<div class="disp-ses">${x.mia ? '<span class="chip ok">Esta sesión</span>' : `<span class="small">Desde ${fc(String(x.desde).slice(0, 10))}</span> <button class="btn sm borde" data-cerrar="${x.id}">Cerrar</button>`}</div>`).join('') : '<span class="muted small">Ninguna</span>'}</td>
+      <td class="r"><div class="disp-acc"><button class="btn sm borde" data-ren="${d.id}">Renombrar</button>${d.bloqueado ? `<button class="btn sm borde" data-desb="${d.id}">Desbloquear</button>` : d.sesiones.some(x => x.mia) ? '' : `<button class="btn sm rojo" data-bloq="${d.id}">Bloquear</button>`}</div></td></tr>`;
+  const m = shell(`<div class="top"><div><h1>Dispositivos</h1><div class="muted small">Quién tiene sesión abierta en Mi Planilla y desde qué dispositivo</div></div>
+      <div class="acc"><button class="btn pri" id="gencod">${ICON.disp}Generar código</button></div></div>
+    <div class="panel acceso-panel ${D.activo ? 'on' : ''}">
+      <div><b>Código de acceso: ${D.activo ? 'encendido' : 'apagado'}</b>
+        <div class="small muted" style="margin-top:4px">${D.activo
+          ? 'Un dispositivo nuevo solo puede entrar con un código de un solo uso que generas aquí. Los dispositivos autorizados siguen entrando normal.'
+          : 'Por ahora cada dispositivo que abre la app queda autorizado solo. Revisa la lista, bloquea lo que no reconozcas y luego enciende el código.'}</div></div>
+      <button class="btn ${D.activo ? 'borde' : 'pri'}" id="tglacc">${D.activo ? 'Apagar' : 'Encender'}</button>
+    </div>
+    <div class="totales" style="margin-bottom:14px"><div class="tot"><div class="k">Dispositivos autorizados</div><div class="v">${D.dispositivos.filter(d => !d.bloqueado).length}</div></div>
+      <div class="tot"><div class="k">Sesiones abiertas</div><div class="v">${nSes}</div></div>
+      <div class="tot ${D.pendientes.length ? 'alerta' : ''}"><div class="k">Intentos sin código</div><div class="v">${D.pendientes.length}</div></div>
+      <div class="tot"><div class="k">Bloqueados</div><div class="v">${D.dispositivos.filter(d => d.bloqueado).length}</div></div></div>
+    <div class="filtro-disp"><label class="f">Persona<select class="inp" id="fper"><option value="">Todas</option>${D.personas.map(p => `<option value="${p.user_id}" ${p.user_id === filtro ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select></label></div>
+    ${pend.length ? `<h2 class="sec-t">Intentos de ingreso sin código <span class="chip warn">${pend.length}</span></h2>
+      <p class="small muted" style="margin:-4px 0 10px">Iniciaron sesión con usuario y contraseña desde un dispositivo no autorizado. Si fue la persona, genérale un código; si no la reconoces, cierra la sesión y pídele que cambie su contraseña.</p>
+      <div class="tscroll"><table class="t"><thead><tr><th>Persona</th><th>Dispositivo</th><th>Desde</th><th>Último intento</th><th></th></tr></thead><tbody>
+      ${pend.map(x => `<tr><td><b>${esc(x.persona)}</b></td><td><div class="disp-nom">${ico(x.agente)}<span>${esc(agenteCorto(x.agente))}</span></div></td><td>${fdt(x.desde)}</td><td>${haceTxt(x.ultimo)}</td>
+        <td class="r"><div class="disp-acc"><button class="btn sm pri" data-codpara="${x.user_id}">Generar código</button><button class="btn sm borde" data-cerrar="${x.id}">Cerrar sesión</button></div></td></tr>`).join('')}</tbody></table></div>` : ''}
+    <h2 class="sec-t">Dispositivos autorizados</h2>
+    ${autorizados.length ? `<div class="tscroll"><table class="t"><thead><tr><th>Persona</th><th>Dispositivo</th><th>Autorizado</th><th>Último uso</th><th>Sesiones abiertas</th><th></th></tr></thead><tbody>${autorizados.map(filaDisp).join('')}</tbody></table></div>`
+      : '<div class="vacio">Todavía no hay dispositivos registrados. Se registran cuando cada persona abre la app.</div>'}
+    <details class="panel det-otras" style="margin-top:16px"><summary><b>Otras sesiones abiertas (${otras.length})</b><div class="small muted">Sesiones de tu equipo en otras apps (VerifyCredit, Asígname) o en una versión anterior de Mi Planilla</div></summary>
+      ${otras.length ? `<div class="tscroll" style="margin-top:10px"><table class="t"><thead><tr><th>Persona</th><th>Dispositivo</th><th>Desde</th><th>Última actividad</th><th></th></tr></thead><tbody>
+      ${otras.map(x => `<tr><td><b>${esc(x.persona)}</b></td><td><div class="disp-nom">${ico(x.agente)}<span>${esc(agenteCorto(x.agente))}</span></div></td><td>${fdt(x.desde)}</td><td>${haceTxt(x.ultimo)}</td><td class="r"><button class="btn sm borde" data-cerrar="${x.id}">Cerrar</button></td></tr>`).join('')}</tbody></table></div>` : '<p class="small muted">No hay.</p>'}</details>
+    <h2 class="sec-t">Códigos recientes</h2>
+    ${D.codigos.length ? `<div class="tscroll"><table class="t"><thead><tr><th>Persona</th><th>Dispositivo</th><th>Generado por</th><th>Fecha</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${D.codigos.map(c => `<tr><td><b>${esc(c.persona)}</b></td><td>${esc(c.nombre_dispositivo || '—')}</td><td>${esc(c.creado_por)}</td><td>${fdt(c.creado_en)}</td>
+        <td>${{ usado: `<span class="chip ok">Usado</span> <span class="tiny muted">${fdt(c.usado_en)}</span>`, vigente: `<span class="chip warn">Vigente hasta ${hora(c.vence_en)}</span>`, vencido: '<span class="chip gris">Vencido</span>', anulado: '<span class="chip gris">Anulado</span>' }[c.estado]}</td>
+        <td class="r">${c.estado === 'vigente' ? `<button class="btn sm borde" data-anular="${c.id}">Anular</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="vacio">Aún no has generado códigos.</div>'}`);
+  const recargar = () => vDispositivos();
+  const hacer = async (fn, msg) => { try { await fn(); if (msg) toast(msg); recargar(); } catch (e) { toast(errMsg(e), true); } };
+  $('#fper', m).onchange = e => { vDispositivos._f = e.target.value; recargar(); };
+  $('#gencod', m).onclick = () => dialogoCodigo(D.personas, filtro);
+  $$('[data-codpara]', m).forEach(b => b.onclick = () => dialogoCodigo(D.personas, b.dataset.codpara));
+  $('#tglacc', m).onclick = async () => {
+    const ok = D.activo
+      ? await confirmar('Apagar el código de acceso', 'Cualquier dispositivo nuevo podrá entrar solo con usuario y contraseña, y quedará autorizado automáticamente.', 'Apagar', true)
+      : await confirmar('Encender el código de acceso', `Desde ahora, todo dispositivo nuevo necesitará un código que generes aquí. Los <b>${D.dispositivos.filter(d => !d.bloqueado).length} dispositivos autorizados</b> de la lista siguen entrando normal. ¿Encender?`, 'Encender');
+    if (ok) hacer(() => q(sb.rpc('pl_acceso_configurar', { p_activo: !D.activo })), D.activo ? 'Código de acceso apagado' : 'Código de acceso encendido');
+  };
+  $$('[data-cerrar]', m).forEach(b => b.onclick = async () => { if (await confirmar('Cerrar sesión', 'Esa persona saldrá de la app en ese dispositivo y tendrá que volver a ingresar.', 'Cerrar sesión', true)) hacer(() => q(sb.rpc('pl_sesion_cerrar', { p_session: b.dataset.cerrar })), 'Sesión cerrada'); });
+  $$('[data-anular]', m).forEach(b => b.onclick = () => hacer(() => q(sb.rpc('pl_anular_codigo', { p_id: b.dataset.anular })), 'Código anulado'));
+  $$('[data-desb]', m).forEach(b => b.onclick = () => hacer(() => q(sb.rpc('pl_dispositivo_bloquear', { p_id: b.dataset.desb, p_bloquear: false })), 'Dispositivo desbloqueado'));
+  $$('[data-bloq]', m).forEach(b => b.onclick = () => {
+    const d = D.dispositivos.find(x => x.id === b.dataset.bloq);
+    const h = hoja('Bloquear dispositivo', `<form style="display:grid;gap:12px"><p class="small muted" style="margin:0"><b>${esc(nombreDisp(d))}</b> de ${esc(d.persona)} no podrá volver a entrar y se cerrarán sus sesiones abiertas.</p>
+      <label class="f">Motivo (opcional)<input class="inp" name="motivo" maxlength="200" placeholder="Ej.: teléfono perdido"></label>
+      <div class="pie"><button type="button" class="btn borde" data-x>Cancelar</button><button class="btn rojo">Bloquear</button></div></form>`);
+    $('[data-x]', h.el).onclick = () => h.cerrar();
+    $('form', h.el).onsubmit = e => { e.preventDefault(); const x = formData(e.target); h.cerrar(); hacer(() => q(sb.rpc('pl_dispositivo_bloquear', { p_id: d.id, p_bloquear: true, p_motivo: x.motivo || null })), 'Dispositivo bloqueado'); };
+  });
+  $$('[data-ren]', m).forEach(b => b.onclick = () => {
+    const d = D.dispositivos.find(x => x.id === b.dataset.ren);
+    const h = hoja('Nombre del dispositivo', `<form style="display:grid;gap:12px"><label class="f">Nombre<input class="inp" name="n" maxlength="80" required value="${esc(nombreDisp(d) === d.nombre ? d.nombre : '')}" placeholder="Ej.: Teléfono de ${esc(d.persona.split(' ')[0])}"></label>
+      <div class="small muted">${esc(d.persona)} · ${esc(agenteCorto(d.agente))}</div><div class="pie"><button class="btn pri">Guardar</button></div></form>`);
+    $('form', h.el).onsubmit = e => { e.preventDefault(); const x = formData(e.target); h.cerrar(); hacer(() => q(sb.rpc('pl_dispositivo_nombre', { p_id: d.id, p_nombre: x.n })), 'Nombre guardado'); };
+  });
+}
+function dialogoCodigo(personas, sel) {
+  const h = hoja('Generar código de acceso', `<form style="display:grid;gap:12px">
+      <p class="small muted" style="margin:0">El código sirve <b>una sola vez</b>, solo para esa persona y vence en 15 minutos. Compártelo directamente con ella.</p>
+      <label class="f">Persona<select class="inp" name="u" required><option value="">Elige…</option>${personas.map(p => `<option value="${p.user_id}" ${p.user_id === sel ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select></label>
+      <label class="f">Nombre del dispositivo (opcional)<input class="inp" name="n" maxlength="80" placeholder="Ej.: Teléfono de la oficina"></label>
+      <div class="pie"><button class="btn pri">Generar</button></div></form>`, { alCerrar: () => { if (location.hash.startsWith('#/dispositivos')) vDispositivos(); } });
+  $('form', h.el).onsubmit = async e => {
+    e.preventDefault(); const x = formData(e.target); const b = $('button', e.target); b.disabled = true;
+    try {
+      const r = await q(sb.rpc('pl_generar_codigo', { p_user: x.u, p_nombre: x.n || null }));
+      h.el.querySelector('form').outerHTML = `<div class="codigo-gen"><div class="small muted">Código para <b>${esc(r.persona)}</b></div>
+        <div class="codigo-num">${esc(r.codigo.slice(0, 3))} ${esc(r.codigo.slice(3))}</div>
+        <div class="small muted">Vence a las ${hora(r.vence_en)} · sirve una sola vez</div>
+        <div class="pie" style="justify-content:center"><button class="btn borde" type="button" data-copiar>Copiar código</button></div></div>`;
+      $('[data-copiar]', h.el).onclick = () => copiarTexto(r.codigo);
+    } catch (er) { b.disabled = false; toast(errMsg(er), true); }
+  };
+}
 
 function pintarLogin() {
   app.innerHTML = `<div class="login"><div class="login-in">
@@ -1171,7 +1349,7 @@ function navItems() {
   const it = [];
   const A = 'Administración', M = 'Mi cuenta';
   if (S.admin) it.push(['#/planillas', 'Planillas', ICON.planilla, A], ['#/solicitudes', 'Solicitudes', ICON.bandeja, A], ['#/empleados', 'Empleados', ICON.gente, A],
-    ['#/prestamos', 'Préstamos', ICON.prestamo, A], ['#/adelantos', 'Adelantos', ICON.adelanto, A], ['#/combustible', 'Combustible', ICON.moto, A], ['#/depreciacion', 'Depreciación', ICON.dep, A], ['#/historial', 'Historial', ICON.reloj, A], ['#/ajustes', 'Ajustes', ICON.ajustes, A]);
+    ['#/prestamos', 'Préstamos', ICON.prestamo, A], ['#/adelantos', 'Adelantos', ICON.adelanto, A], ['#/combustible', 'Combustible', ICON.moto, A], ['#/depreciacion', 'Depreciación', ICON.dep, A], ['#/historial', 'Historial', ICON.reloj, A], ['#/dispositivos', 'Dispositivos', ICON.disp, A], ['#/ajustes', 'Ajustes', ICON.ajustes, A]);
   const marcaje = marcajeActivo();
   if (S.admin) it.splice(1, 0, ...(marcaje ? [['#/marcajes', 'Marcajes', ICON.marca, A]] : []), ['#/horarios', 'Horarios', ICON.reloj, A]);
   if (S.supervisor) it.push(['#/asistencia', 'Asistencia', ICON.planilla, 'Supervisión'], ['#/solicitudes', 'Solicitudes', ICON.bandeja, 'Supervisión'], ['#/empleados', 'Empleados', ICON.gente, 'Supervisión'], ['#/vacaciones', 'Vacaciones', ICON.sol, 'Supervisión']);
@@ -1276,6 +1454,7 @@ async function ruta() {
       if (p[0] === 'historial') return vHistorial();
       if (p[0] === 'liquidacion') return vLiquidacion(p[1]);
       if (p[0] === 'ajustes') return vAjustes();
+      if (p[0] === 'dispositivos') return vDispositivos();
       if (p[0] === 'comp') return vComprobanteAdmin(p[1], p[2]);
       if (p[0] === 'suscripcion') return vSuscripcion();
     }
@@ -4470,7 +4649,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '64';
+const APP_VERSION = '65';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */

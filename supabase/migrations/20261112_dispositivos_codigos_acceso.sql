@@ -1,0 +1,19 @@
+-- v65 (12-nov-2026). Aplicada como `pl_dispositivos_y_codigos_de_acceso`.
+-- Tablas (sin acceso directo para anon/authenticated; RLS sin políticas):
+--   pl_dispositivos (empresa, usuario, nombre, agente, token_hash = sha256 del token guardado en el teléfono, via codigo|automatico,
+--                    autorizado_por, ultimo_uso, bloqueado, motivo_bloqueo)
+--   pl_sesiones (session_id del JWT de Supabase, empresa, usuario, dispositivo, cerrada_en/por, motivo)
+--   pl_codigos_acceso (código de 6 dígitos guardado como sha256(id:codigo), vence en 15 min, un solo uso, anulado)
+--   pl_acceso_fallos (máximo 5 códigos equivocados por usuario cada 15 min)
+-- Bloqueo: pl_empresa_actual() devuelve NULL si pl__sesion_ok() es falso, y pl_es_superadmin() también lo respeta.
+--   Como todas las tablas pl_ tienen la política restrictiva pl_empresa (empresa_id = pl_empresa_actual()), una sesión no
+--   autorizada no ve ni escribe nada (tampoco las funciones de pl_definer ni las fotos del bucket).
+--   pl__sesion_ok: sin usuario (cron, service role) = sí; sesión registrada = no cerrada, dispositivo no bloqueado y
+--   (con dispositivo o interruptor apagado); sesión sin registrar = solo si el interruptor está apagado.
+--   VerifyCredit y Asígname no usan pl_empresa_actual (Asígname usa pl_empresa_de), así que no les afecta.
+-- Interruptor: pl_parametros clave `acceso_codigo` (si/no) por empresa; se cambia con pl_acceso_configurar (exige que el
+--   dispositivo del admin ya esté registrado).
+-- Funciones para la app: pl_acceso(p_token, p_disp, p_agente), pl_canjear_codigo(p_codigo, p_disp, p_agente).
+-- Funciones de administración (pl_es_admin): pl_dispositivos_admin(), pl_generar_codigo(p_user, p_nombre), pl_anular_codigo,
+--   pl_dispositivo_nombre, pl_dispositivo_bloquear(p_id, p_bloquear, p_motivo), pl_sesion_cerrar(p_session), pl_acceso_configurar.
+-- Cerrar sesión o bloquear también borra la fila de auth.sessions (y sus refresh tokens), así el teléfono sale de la app.
