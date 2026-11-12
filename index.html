@@ -2800,7 +2800,6 @@ function evaluarRostro(cajas, vis = { x: 0, y: 0, w: 1, h: 1 }, suelto = false) 
   return { ok: true };
 }
 const TXT_ROSTRO = { nada: 'Pon tu cara dentro del óvalo', varias: 'Solo debe aparecer una persona', lejos: 'Acércate un poco más', centro: 'Centra tu cara en el óvalo' };
-const TXT_ROSTRO_FOTO = { nada: 'No se ve tu cara en la foto.', varias: 'En la foto solo debes aparecer tú.', lejos: 'Tu cara se ve muy lejos en la foto.' };
 // Abre la cámara frontal y devuelve la selfie (Blob JPEG) o null si se cancela.
 // En la selfie solo deja tomar la foto cuando se ve una cara (blob.rostro = true); si el detector no funciona, blob.rostro = false.
 function tomarSelfie(op = {}) {
@@ -2809,39 +2808,31 @@ function tomarSelfie(op = {}) {
     let stream = null, listo = false, foto = null, turno = 0;
     const parar = () => { turno++; stream?.getTracks().forEach(t => t.stop()); stream = null; };
     const h = hoja(titulo, `<div class="selfie ${trasera ? 'trasera' : ''}"><video playsinline autoplay muted></video><img alt="${esc(titulo)}" class="hidden">${conRostro ? '<div class="selfie-ovalo"></div>' : ''}<div class="selfie-msg small muted">Abriendo la cámara…</div></div>
-      <input type="file" accept="image/*" capture="${trasera ? 'environment' : 'user'}" hidden>
       <div class="pie"><button type="button" class="btn borde hidden" data-otra>Repetir</button><button type="button" class="btn pri" data-tomar disabled>${ICON.camara}Tomar foto</button><button type="button" class="btn pri hidden" data-usar>Usar esta foto</button></div>`,
       { alCerrar: () => { parar(); if (!listo) resolve(null); } });
-    const caja = $('.selfie', h.el), vid = $('video', h.el), img = $('img', h.el), msg = $('.selfie-msg', h.el), inp = $('input[type=file]', h.el);
+    const caja = $('.selfie', h.el), vid = $('video', h.el), img = $('img', h.el), msg = $('.selfie-msg', h.el);
     const bTomar = $('[data-tomar]', h.el), bUsar = $('[data-usar]', h.el), bOtra = $('[data-otra]', h.el);
     const mostrar = blob => { foto = blob; img.src = URL.createObjectURL(blob); img.classList.toggle('hidden', false); vid.classList.toggle('hidden', true); caja.classList.remove('ok'); caja.classList.add('lista'); bTomar.classList.toggle('hidden', true); bUsar.classList.toggle('hidden', false); bOtra.classList.toggle('hidden', false); msg.textContent = ''; };
-    const respaldo = () => { msg.textContent = 'No se pudo abrir la cámara aquí. Toca el botón para tomar la selfie con la cámara del teléfono.'; vid.classList.toggle('hidden', true); caja.classList.remove('ok'); caja.classList.add('lista'); bTomar.disabled = false; bTomar.onclick = () => inp.click(); };
-    inp.onchange = () => {
-      const f = inp.files[0]; inp.value = ''; if (!f) return; const im = new Image();
-      im.onload = async () => {
-        let rostro = false;
-        if (conRostro) { // la foto del teléfono también debe mostrar una cara
-          msg.textContent = 'Revisando la foto…'; bTomar.disabled = true;
-          const e = await cargarRostro() ? await mirarRostro(im).then(c => evaluarRostro(c, undefined, true)).catch(() => null) : null;
-          bTomar.disabled = false;
-          if (!document.body.contains(h.el)) return;
-          if (e && !e.ok) { msg.textContent = `${TXT_ROSTRO_FOTO[e.cod]} Toca el botón y tómala de nuevo.`; return; }
-          rostro = !!e;
-        }
-        const b = await reducirImagen(im); b.vivo = false; b.rostro = rostro; mostrar(b);
-      };
-      im.src = URL.createObjectURL(f);
+    // Solo se acepta la cámara en vivo dentro de la app (sin la cámara aparte del teléfono ni la galería).
+    const sinCamara = er => {
+      const permiso = er && /NotAllowed|Permission|Security/i.test(`${er.name || ''} ${er.message || ''}`);
+      msg.innerHTML = permiso
+        ? 'Mi Planilla no tiene permiso para usar la cámara. En el navegador toca el candado o los tres puntos → <b>Permisos del sitio</b> → <b>Cámara: Permitir</b>, y luego toca “Reintentar”.'
+        : 'No se pudo abrir la cámara. Cierra otras apps que la estén usando y toca “Reintentar”.';
+      vid.classList.toggle('hidden', true); caja.classList.remove('ok'); caja.classList.add('lista');
+      bTomar.disabled = false; bTomar.textContent = 'Reintentar';
+      bTomar.onclick = () => { bTomar.innerHTML = `${ICON.camara}Tomar foto`; bTomar.disabled = true; caja.classList.remove('lista'); vid.classList.toggle('hidden', false); msg.textContent = 'Abriendo la cámara…'; abrir(); };
     };
     const capturar = async rostro => { const b = await reducirImagen(vid, 720, !trasera); b.vivo = true; b.rostro = rostro; parar(); mostrar(b); };
     // parte del video que se ve en pantalla (el video se recorta para llenar el recuadro)
     const visible = () => { const fa = vid.videoWidth / vid.videoHeight, ea = vid.clientWidth / vid.clientHeight || 0.75; return fa > ea ? { x: (1 - ea / fa) / 2, y: 0, w: ea / fa, h: 1 } : { x: 0, y: (1 - fa / ea) / 2, w: 1, h: fa / ea }; };
     const abrir = async () => {
-      if (!navigator.mediaDevices?.getUserMedia) return respaldo();
+      if (!navigator.mediaDevices?.getUserMedia) return sinCamara();
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: trasera ? 'environment' : 'user', width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false });
         if (!document.body.contains(h.el)) return parar();
         vid.srcObject = stream; await vid.play().catch(() => { });
-      } catch (_) { return respaldo(); }
+      } catch (er) { return sinCamara(er); }
       if (!conRostro) { msg.textContent = 'Enfoca el odómetro para que se lean los números y toca “Tomar foto”'; bTomar.disabled = false; bTomar.onclick = () => capturar(false); return; }
       const mio = turno, sigue = () => mio === turno && stream;
       const sinDetector = () => { caja.classList.remove('ok'); msg.textContent = 'Este teléfono no pudo activar el detector de rostro. Puedes tomar la foto, pero el marcaje quedará por revisar.'; bTomar.disabled = false; bTomar.onclick = () => capturar(false); };
@@ -2962,7 +2953,7 @@ async function vMarcar() {
       selfieLista = null; gpsParar();
       const al = r.alertas || [];
       esperaMkFin(`${nomMarca(x.tipo)} marcada a las ${hora(r.marcado_en)}`);
-      if (al.length) toast(`${nomMarca(x.tipo)} guardada a las ${hora(r.marcado_en)}. Queda por revisar: ${al.map(a => (ALERTAS_MK[a]?.[0] || a).toLowerCase()).join(', ')}`, true);
+      if (al.length) toast(`${nomMarca(x.tipo)} guardada a las ${hora(r.marcado_en)} · Queda por revisar: ${al.map(a => (ALERTAS_MK[a]?.[0] || a).toLowerCase()).join(', ')}`, true);
       _recMk = null; vMarcar();
     } catch (er) {
       const msg = errMsg(er); intentoFin(intento, 'fallo', paso, msg); esperaMkFin();
@@ -4662,7 +4653,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '67';
+const APP_VERSION = '68';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
