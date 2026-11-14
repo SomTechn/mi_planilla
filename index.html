@@ -1935,7 +1935,7 @@ async function tabMovimientos(cont, per, calc) {
     ${abierta ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap"><span class="small muted">${per.tipo === 'comisiones' ? 'Registra comisiones, bonos y deducciones de cada colaborador. Los préstamos marcados “en comisiones” y los vales/adelantos se agregan solos.' : 'Vacaciones, décimo tercer/cuarto mes, combustible u otras deducciones. El salario, seguro y préstamos se calculan solos.'}</span><div style="display:flex;gap:8px;flex-wrap:wrap">${per.tipo === 'salario' ? `<button class="btn borde" id="d13">Calcular décimo tercer mes</button><button class="btn borde" id="d14">Calcular décimo cuarto mes</button><button class="btn borde" id="comb">${ICON.moto}Agregar combustible</button>` : ''}<button class="btn ama" id="cap">Capturar con plantillas</button><button class="btn pri" id="add">${ICON.mas}Agregar línea</button></div></div>` : ''}
     ${ids.length ? `<div class="lista">${ids.map(id => { const c = calc.find(x => x.empleado_id === id); const ls = porEmp[id] || []; return `
       <div class="panel"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><h3>${esc(nombre(id))}</h3>${c ? `<span class="num">${L(c.neto)}</span>` : ''}</div>
-      ${ls.length ? `<table class="t"><tbody>${ls.map(mv => `<tr class="${abierta ? 'click' : ''}" data-m="${mv.id}"><td style="width:28px"><span class="chip ${mv.tipo === 'ingreso' ? 'ok' : 'red'}" style="padding:0 7px">${mv.tipo === 'ingreso' ? '+' : '−'}</span></td><td>${esc(mv.concepto)}${mv.detalle ? `<div class="tiny muted">${esc(mv.detalle)}</div>` : ''}</td><td class="r num">${L(mv.monto)}</td></tr>`).join('')}</tbody></table>` : '<div class="small muted">Sin líneas manuales</div>'}
+      ${ls.length ? `<table class="t"><tbody>${ls.map(mv => `<tr class="${abierta ? 'click' : ''}" data-m="${mv.id}"><td style="width:28px"><span class="chip ${mv.tipo === 'ingreso' ? 'ok' : 'red'}" style="padding:0 7px">${mv.tipo === 'ingreso' ? '+' : '−'}</span></td><td>${esc(mv.concepto)}${mv.detalle ? `<div class="tiny muted">${esc(mv.detalle)}</div>` : ''}</td><td class="r num" ${+mv.monto < 0 ? 'style="color:var(--rojo,#C62828)"' : ''}>${L(mv.monto)}</td></tr>`).join('')}</tbody></table>` : '<div class="small muted">Sin líneas manuales</div>'}
       ${abierta ? `<button class="btn sm" style="margin-top:8px" data-add="${id}">${ICON.mas}Agregar a ${esc(corto(nombre(id)))}</button>` : ''}</div>`; }).join('')}</div>`
       : `<div class="vacio"><b>Sin líneas todavía</b>Agrega la primera comisión o ajuste.</div>`}`;
   if (!abierta) return;
@@ -1973,7 +1973,8 @@ async function editarMov(per, mv, empId, emps) {
       <option value="fijo">Escribir el monto directo</option></select></label>
     <div class="small" id="regla" style="color:var(--azul2);font-weight:600"></div>
     <div class="row2" id="campos"><label class="f" id="lcant">Cantidad<input class="inp" type="number" step="any" min="0" name="cantidad" inputmode="decimal"></label><label class="f" id="lval">Valor por unidad (L)<input class="inp" type="number" step="any" min="0" name="valor" inputmode="decimal"></label></div>
-    <label class="f">Monto (L)<input class="inp" type="number" step="1" min="0" name="monto" value="${mv.monto}" required></label>
+    <label class="f">Monto (L)<input class="inp" type="number" step="1" name="monto" value="${mv.monto}" required></label>
+    <div class="tiny muted" id="ayneg" style="margin-top:-6px">Para un ingreso que resta (por ejemplo un ajuste de salario), escribe el monto en negativo: <b>-2700</b>.</div>
     <label class="f">Detalle del cálculo<input class="inp" name="detalle" value="${esc(mv.detalle || '')}" placeholder="Aparece en el comprobante"></label>
     <label class="chk" id="lguardar"><input type="checkbox" name="guardar">Guardar este cálculo para este empleado (la próxima vez solo pones la cantidad)</label>
     <div class="pie">${mv.id ? '<button type="button" class="btn rojo" id="del">Eliminar</button>' : ''}<button class="btn pri">${mv.id ? 'Guardar cambios' : 'Agregar línea'}</button></div></form>`);
@@ -2012,7 +2013,10 @@ async function editarMov(per, mv, empId, emps) {
   if (mv.cantidad != null) f.cantidad.value = mv.cantidad;
   dl(); detectar(true);
   if (mv.id && !pl && mv.cantidad == null) { f.modo.value = 'fijo'; ui(); }
-  $$('.segm button', h.el).forEach(b => b.onclick = () => { $$('.segm button', h.el).forEach(x => x.classList.toggle('on', x === b)); f.tipo.value = b.dataset.t; dl(); detectar(); });
+  // los ingresos pueden ser negativos (ajuste que resta); las deducciones no
+  const signo = () => { const ded = f.tipo.value === 'deduccion'; f.monto.min = ded ? '0' : ''; $('#ayneg', h.el).classList.toggle('hidden', ded); };
+  signo();
+  $$('.segm button', h.el).forEach(b => b.onclick = () => { $$('.segm button', h.el).forEach(x => x.classList.toggle('on', x === b)); f.tipo.value = b.dataset.t; signo(); dl(); detectar(); });
   f.empleado_id.onchange = () => { dl(); detectar(); };
   f.concepto.oninput = () => detectar();
   f.modo.onchange = ui;
@@ -2020,6 +2024,7 @@ async function editarMov(per, mv, empId, emps) {
   f.monto.oninput = () => { if (f.modo.value === 'plantilla' && pl?.calculo === 'fijo') f.cantidad.value = f.monto.value; };
   f.onsubmit = async e => {
     e.preventDefault(); const x = formData(f);
+    if (x.tipo === 'deduccion' && +x.monto < 0) return toast('Una deducción no puede ser negativa. Si quieres restar a un ingreso, ponlo como ingreso en negativo.', true);
     const usaCant = x.modo !== 'fijo' && !(x.modo === 'plantilla' && pl?.calculo === 'fijo');
     const row = { periodo_id: per.id, empleado_id: x.empleado_id, tipo: x.tipo, concepto: x.concepto.trim(), monto: Math.round(+x.monto), detalle: x.detalle || null,
       cantidad: usaCant && x.cantidad !== '' ? +x.cantidad : (x.modo === 'plantilla' ? +x.monto : null), plantilla_id: x.modo === 'plantilla' ? pl.id : null };
@@ -4653,7 +4658,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '68';
+const APP_VERSION = '69';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
