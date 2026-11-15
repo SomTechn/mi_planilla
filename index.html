@@ -479,6 +479,14 @@ button.lnk{background:none;border:0;padding:0;color:var(--azul2);font-weight:600
 .segm{display:inline-flex;background:#fff;border:1px solid var(--linea);border-radius:999px;padding:3px;gap:2px}
 .segm button{border:0;background:none;border-radius:999px;padding:6px 14px;font-weight:600;color:var(--gris);cursor:pointer;font-size:13px}
 .segm button.on{background:var(--tinta);color:#fff}
+.he-lista{display:grid;gap:2px;max-height:46vh;overflow:auto;border:1px solid var(--linea);border-radius:12px;padding:4px;background:#fff}
+.he-it{padding:8px;border-radius:8px;cursor:pointer;font-size:14px}
+.he-it:hover{background:#F5F6FA}
+.he-it .grow{flex:1;min-width:0}
+.he-it .num{white-space:nowrap}
+.he-sec{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 6px}
+.he-sec h4{margin:0;font-size:14px}
+.he-acc{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap}
 
 /* ---------- print ---------- */
 #imprimir{display:none}
@@ -2386,7 +2394,7 @@ async function vEmpleado(id) {
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px;flex-wrap:wrap"><h2>Vacaciones</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="vini">Saldo inicial</button><button class="btn sm" id="vaj">Ajuste</button><button class="btn sm pri" id="vreg">Registrar vacaciones</button></div></div>
     ${htmlResumenVac(vac)}${+vac.disponible > 0 && +e.salario_mensual ? `<div class="small" style="margin-top:8px">Valor de los <b>${N(vac.disponible)} días</b> disponibles: <b>${L(Math.round(+vac.disponible * e.salario_mensual / 30))}</b> <span class="muted">(salario ÷ 30 por día)</span></div>` : ''}
     ${vmov.length ? `<div class="tscroll" style="margin-top:10px"><table class="t"><tbody>${vmov.map(v => `<tr><td>${v.tipo === 'ajuste' ? 'Ajuste' : `${fc(v.desde)} al ${fc(v.hasta)}`}<div class="tiny muted">${esc(v.nota || v.respuesta || '')}</div></td><td>${chipEstado(v.estado)}</td><td class="r num">${+v.dias > 0 && v.tipo === 'ajuste' ? '+' : ''}${N(v.dias)} días</td></tr>`).join('')}</tbody></table></div>` : ''}
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px"><h2>Horas extra</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="hajus">± Ajustar saldo</button><button class="btn sm pri" id="hreg">Registrar horas extra</button></div></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px"><h2>Horas extra</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="hpag">Pagar horas</button><button class="btn sm" id="hajus">± Ajustar saldo</button><button class="btn sm pri" id="hreg">Registrar horas extra</button></div></div>
     ${htmlBanco(banco)}${+banco.saldo > 0 && +e.salario_mensual ? `<div class="small" style="margin-top:8px">Si se pagaran las <b>${N(banco.saldo)} h</b> del banco: <b>${L(Math.round(+banco.saldo * e.salario_mensual / 240 * (+S.par?.factor_he || 1.25)))}</b> <span class="muted">(${L(e.salario_mensual / 240)} × ${N(+S.par?.factor_he || 1.25)} por hora)</span></div>` : ''}${htmlAjustes(ajustesE, nombresAj)}
     ${hxs.length ? `<div class="tscroll" style="margin-top:10px"><table class="t"><tbody>${hxs.map(h => `<tr><td>${fc(h.fecha)}<div class="tiny muted">${etiquetaHoras(h)}${h.hora_inicio ? ` · ${horaCorta(h.hora_inicio)} – ${horaCorta(h.hora_fin)}` : ''} · ${esc(h.motivo)}</div></td><td class="r num">${h.tipo === 'descanso' ? '−' : '+'}${N(h.horas)} h</td><td class="r">${chipEstado(h.estado)}</td></tr>`).join('')}</tbody></table></div>` : ''}
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:22px 0 10px"><h2>Permisos</h2><button class="btn sm pri" id="preg">Registrar permiso</button></div>
@@ -2412,6 +2420,7 @@ async function vEmpleado(id) {
   $('#nplant', m).onclick = () => editarPlantilla(null, { empleado_id: id }, rec);
   $$('[data-pl]', m).forEach(tr => tr.onclick = () => { const p = plants.find(x => x.id === tr.dataset.pl); if (!p.empleado_id) return toast('Es un cálculo del área; se edita en Ajustes'); editarPlantilla(p, {}, rec); });
   $('#hajus', m).onclick = () => ajustarHoras({ empleados: [{ id: e.id, nombre: e.nombre }], empId: e.id, despues: () => vEmpleado(id) });
+  $('#hpag', m).onclick = () => pagarHorasRegistradas({ empleados: [{ id: e.id, nombre: e.nombre }], empId: e.id, valorHora: () => +e.salario_mensual / 240, despues: () => vEmpleado(id) });
   $('#hreg', m).onclick = () => {
     const h = hoja('Registrar horas extra', `<form><label class="f">Fecha<input class="inp" type="date" name="fecha" value="${iso(hoyHN())}" required></label>
       <div class="row2"><label class="f">Hora de inicio<input class="inp" type="time" name="inicio" required></label><label class="f">Hora de fin<input class="inp" type="time" name="fin" required></label></div><div class="small muted" data-tot>Escribe la hora en que empezaste y terminaste.</div>
@@ -2990,7 +2999,7 @@ async function vMarcajesDia(fecha) {
     q(sb.from('pl_marcajes').select('*').eq('fecha', fecha).order('marcado_en')),
     q(sb.rpc('pl_marcaje_resumen', { p_desde: fecha, p_hasta: fecha })), quincenasSalario(),
     q(sb.rpc('pl_alertas_marcaje', { p_fecha: fecha })).catch(() => null)]);
-  const ints = await q(sb.from('pl_marcaje_intentos').select('*').eq('fecha', fecha).order('iniciado_en')).catch(() => []);
+  const [ints, hes] = await Promise.all([q(sb.from('pl_marcaje_intentos').select('*').eq('fecha', fecha).order('iniciado_en')).catch(() => []), cargarHeRango(fecha, fecha)]);
   const intsDe = (emp, tipo) => ints.filter(i => i.empleado_id === emp && i.tipo === tipo);
   // primer intento del empleado para esa marca, si fue 2 min o más antes de la hora en que quedó guardada
   const demora = r => { const i = intsDe(r.empleado_id, r.tipo)[0]; const g = new Date(r.hora_original || r.marcado_en); return i && r.origen === 'empleado' && g - new Date(i.iniciado_en) >= 120000 ? i : null; };
@@ -3004,17 +3013,20 @@ async function vMarcajesDia(fecha) {
   const propio = id => !S.admin && S.yo && id === S.yo.id;
   const pend = val.filter(r => r.estado === 'pendiente' && !propio(r.empleado_id));
   const per = quincenaDe(pers, fecha);
+  const exD = {}; res.forEach(r => exD[r.empleado_id] = estadoExtraDia(r, hes, propio(r.empleado_id)));
+  const itemHe = id => { const r = rs[id]; return { empleado_id: id, fecha, nombre: emps0.find(e => e.id === id)?.nombre || '', min: +r.extra_min, pend: +r.n_pendientes }; };
+  const candHe = lista.filter(e => exD[e.id]?.tipo === 'candidata');
   const celda = (e, t, r) => r ? `<button class="marca-cel mk-${r.estado}" data-mk="${r.id}" title="${EST_MK[r.estado] || ''}">${urls[r.foto_path] ? `<img src="${urls[r.foto_path]}" alt="">` : '<span class="sinfoto"></span>'}<span><b>${hora(r.marcado_en)}</b><small class="tiny">${r.hora_original ? 'editado · ' : r.origen === 'admin' ? 'manual · ' : r.origen === 'solicitud' ? 'solicitado · ' : r.auto_aprobado ? 'automático · ' : ''}${EST_MK[r.estado] || ''}</small>${r.alertas?.length ? `<small>${chipsAlerta(r.alertas)}</small>` : ''}${r.precision_m >= 100 ? `<small class="tiny" style="color:#8A6A00">GPS ±${Math.round(r.precision_m)} m</small>` : ''}${demora(r) ? `<small class="tiny" style="color:#B45309">1er intento ${hora(demora(r).iniciado_en)}</small>` : ''}</span></button>`
     : (propio(e.id) || fecha > hoy ? '<span class="muted">—</span>' : `<button class="btn sm borde mk-add" data-add="${e.id}|${t}" title="Agregar marcaje manual">+ Agregar</button>`);
   const result = e => { const r = rs[e.id]; if (!r) return ''; const p = [];
     if (+r.tarde_min) p.push(`<span class="chip red">Tarde ${minTxt(r.tarde_min)}</span>`);
-    if (+r.extra_min) p.push(`<span class="chip ok">Extra ${minTxt(r.extra_min)}</span>`);
+    if (exD[e.id]) p.push(`<span class="he-acc">${exD[e.id].html}${exD[e.id].tipo === 'candidata' ? `<button class="btn sm pri" data-he="${e.id}">Aprobar extra</button>` : ''}</span>`);
     if (r.falta) p.push('<span class="chip red">Falta</span>');
     if (r.trabajado_min != null) p.push(`<span class="tiny muted">${minTxt(r.trabajado_min)} trabajadas</span>`);
     return p.join(' ') || '<span class="muted">—</span>'; };
   const m = shell(`<div class="top"><div><h1>Marcajes</h1><div class="muted small">${DIAS_LARGO[pf(fecha).getDay()]} ${fl(fecha)} · ${Object.keys(por).length} de ${emps.length} empleados marcaron${per ? ' · ' + esc(per.nombre) : ''}</div></div>
       <div class="acc"><button class="btn borde sm" data-d="-1" aria-label="Día anterior">‹</button><input class="inp" type="date" id="fd" value="${fecha}" max="${hoy}" style="width:auto"><button class="btn borde sm" data-d="1" ${fecha >= hoy ? 'disabled' : ''} aria-label="Día siguiente">›</button>
-      ${pend.length ? `<button class="btn pri sm" id="aprobar-dia">Aprobar ${pend.length} por revisar</button>` : ''}</div></div>
+      ${pend.length ? `<button class="btn pri sm" id="aprobar-dia">Aprobar ${pend.length} por revisar</button>` : ''}${candHe.length > 1 ? `<button class="btn ama sm" id="he-dia">Aprobar horas extra (${candHe.length})</button>` : ''}</div></div>
     ${tabsMarcajes('dia', fecha, per?.id)}
     ${alr && (alr.marcajes.length || alr.sin_entrada.length || alr.sin_salida.length) ? `<div class="mk-alertas">
       ${alr.marcajes.length ? `<div class="panel"><h4>⚠ ${alr.marcajes.length} marcajes con alertas por revisar</h4>${alr.marcajes.map(a => `<div class="small">${esc(corto(a.nombre))} · ${nomMarca(a.tipo).toLowerCase()} ${hora(a.marcado_en)} ${chipsAlerta(a.alertas)}${a.distancia_m != null && a.alertas.includes('fuera_zona') ? ` <span class="tiny muted">a ${N(a.distancia_m)} m</span>` : ''}</div>`).join('')}</div>` : ''}
@@ -3030,6 +3042,8 @@ async function vMarcajesDia(fecha) {
   $('#fd', m).onchange = e => e.target.value && (location.hash = `#/marcajes/${e.target.value}`);
   $$('[data-d]', m).forEach(b => b.onclick = () => location.hash = `#/marcajes/${addDias(fecha, +b.dataset.d)}`);
   $('#aprobar-dia', m) && ($('#aprobar-dia', m).onclick = async () => { if (!await confirmar('Aprobar marcajes', `Se aprueban ${pend.length} marcajes por revisar del ${fc(fecha)}.`, 'Aprobar')) return; try { const n = await q(sb.rpc('pl_revisar_marcajes', { p_ids: pend.map(r => r.id), p_accion: 'aprobar' })); toast(`${n} marcajes aprobados`); recargar(); } catch (er) { toast(errMsg(er), true); } });
+  $('#he-dia', m) && ($('#he-dia', m).onclick = () => aprobarExtraMarcaje(candHe.map(e => itemHe(e.id)), recargar));
+  $$('[data-he]', m).forEach(b => b.onclick = () => aprobarExtraMarcaje([itemHe(b.dataset.he)], recargar));
   $$('[data-add]', m).forEach(b => b.onclick = () => { const [emp, tipo] = b.dataset.add.split('|'); const e = emps.find(x => x.id === emp);
     const h = hoja(`Agregar ${nomMarca(tipo).toLowerCase()} · ${corto(e?.nombre || '')}`, `<form style="display:grid;gap:12px"><p class="small muted" style="margin:0">Para cuando el empleado olvidó marcar. Queda aprobado y marcado como manual, sin foto ni ubicación.</p>
       <label class="f">Hora<input class="inp" type="time" name="hora" required></label><label class="f">Motivo<input class="inp" name="motivo" required placeholder="Ej.: olvidó marcar, se le descargó el teléfono"></label><div class="pie"><button class="btn pri">Agregar marcaje</button></div></form>`);
@@ -3071,43 +3085,169 @@ async function vMarcajesQuincena(perId) {
   const pers = await quincenasSalario();
   if (!pers.length) return shell('<div class="vacio"><b>Sin quincenas</b>Crea una planilla de salario para ver el resumen por quincena.</div>');
   const per = pers.find(p => p.id === perId) || quincenaDe(pers, iso(hoyHN())) || pers[0];
-  const [emps0, res, pendRows] = await Promise.all([
+  const [emps0, res, pendRows, hes] = await Promise.all([
     q(sb.rpc('pl_lista_empleados')),
     q(sb.rpc('pl_marcaje_resumen', { p_desde: per.fecha_inicio, p_hasta: per.fecha_fin })),
-    q(sb.from('pl_marcajes').select('id,empleado_id').eq('estado', 'pendiente').eq('anulado', false).gte('fecha', per.fecha_inicio).lte('fecha', per.fecha_fin))]);
+    q(sb.from('pl_marcajes').select('id,empleado_id').eq('estado', 'pendiente').eq('anulado', false).gte('fecha', per.fecha_inicio).lte('fecha', per.fecha_fin)),
+    cargarHeRango(per.fecha_inicio, per.fecha_fin)]);
   const propio = id => !S.admin && S.yo && id === S.yo.id;
+  res.forEach(r => r.he = estadoExtraDia(r, hes, propio(r.empleado_id)));
   const porE = {}; res.forEach(r => (porE[r.empleado_id] = porE[r.empleado_id] || []).push(r));
   const nom = id => emps0.find(e => e.id === id)?.nombre || '';
   const filas = Object.entries(porE).map(([id, ds]) => ({ id, nombre: nom(id), ds,
     conH: ds.filter(d => !d.sin_horario && !d.libre).length, marc: ds.filter(d => d.m_entrada).length, faltas: ds.filter(d => d.falta).length,
     tarde: ds.reduce((a, d) => a + +d.tarde_min, 0), nTarde: ds.filter(d => +d.tarde_min).length, extra: ds.reduce((a, d) => a + +d.extra_min, 0),
-    pend: ds.reduce((a, d) => a + +d.n_pendientes, 0), sinH: ds.filter(d => d.sin_horario).length })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    pend: ds.reduce((a, d) => a + +d.n_pendientes, 0), sinH: ds.filter(d => d.sin_horario).length,
+    heAp: ds.reduce((a, d) => a + (d.he?.tipo === 'aprobada' ? d.he.horas : 0), 0), heCand: ds.filter(d => d.he?.tipo === 'candidata').length })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const candHe = filas.flatMap(f => f.ds.filter(d => d.he?.tipo === 'candidata').map(d => ({ empleado_id: f.id, fecha: d.fecha, nombre: f.nombre, min: +d.extra_min, pend: +d.n_pendientes })));
   const tot = k => filas.reduce((a, f) => a + f[k], 0);
   const pend = pendRows.filter(r => !propio(r.empleado_id));
   const m = shell(`<div class="top"><div><h1>Marcajes</h1><div class="muted small">Del ${fc(per.fecha_inicio)} al ${fc(per.fecha_fin)} · horario contra marcaje</div></div>
-      <div class="acc">${selectorQuincena(pers, per.id)}${pend.length ? `<button class="btn borde sm" id="aprobar-q">Aprobar ${pend.length} por revisar</button>` : ''}${per.estado === 'abierta' && S.admin || per.estado === 'abierta' && S.supervisor ? '<button class="btn ama" id="aplicar">Aplicar a la planilla</button>' : ''}</div></div>
+      <div class="acc">${selectorQuincena(pers, per.id)}${pend.length ? `<button class="btn borde sm" id="aprobar-q">Aprobar ${pend.length} por revisar</button>` : ''}${candHe.length ? `<button class="btn pri sm" id="he-q">Aprobar horas extra (${candHe.length} día${candHe.length > 1 ? 's' : ''})</button>` : ''}${per.estado === 'abierta' && S.admin || per.estado === 'abierta' && S.supervisor ? '<button class="btn ama" id="aplicar">Aplicar a la planilla</button>' : ''}</div></div>
     ${tabsMarcajes('q', per.fecha_inicio <= iso(hoyHN()) && per.fecha_fin >= iso(hoyHN()) ? iso(hoyHN()) : per.fecha_fin, per.id)}
     <div class="totales" style="grid-template-columns:repeat(4,1fr)"><div><div class="k">Llegadas tarde</div><div class="v">${tot('nTarde')}</div><div class="tiny muted">${minTxt(tot('tarde'))}</div></div><div><div class="k">Horas extra</div><div class="v">${N(tot('extra') / 60)} h</div></div><div><div class="k">Faltas</div><div class="v">${tot('faltas')}</div></div><div class="${tot('pend') ? 'neto' : ''}"><div class="k">Por revisar</div><div class="v">${tot('pend')}</div></div></div>
     ${tot('sinH') ? `<div class="err" style="background:#FFF6CC;color:#6B5200;margin:0 0 12px">Hay ${tot('sinH')} días sin horario cargado en esta quincena; sin horario no se calculan llegadas tarde ni horas extra. <a href="#/horarios/${per.id}">Cargar horarios</a></div>` : ''}
     <div class="tscroll"><table class="t"><thead><tr><th>Empleado</th><th class="r">Días con horario</th><th class="r">Marcó</th><th class="r">Faltas</th><th class="r">Tarde</th><th class="r">Horas extra</th><th class="r">Por revisar</th></tr></thead><tbody>
-      ${filas.map(f => `<tr class="click" data-emp="${f.id}"><td><b>${esc(f.nombre)}</b>${f.sinH ? `<div class="tiny" style="color:#8A6A00">${f.sinH} días sin horario</div>` : ''}</td><td class="r">${f.conH}</td><td class="r">${f.marc}</td><td class="r">${f.faltas ? `<span class="chip red">${f.faltas}</span>` : '—'}</td><td class="r">${f.tarde ? `<span style="color:#B42318;font-weight:600">${minTxt(f.tarde)}</span><div class="tiny muted">${f.nTarde} día${f.nTarde > 1 ? 's' : ''}</div>` : '—'}</td><td class="r">${f.extra ? `<b>${N(f.extra / 60)} h</b>` : '—'}</td><td class="r">${f.pend ? `<span class="chip warn">${f.pend}</span>` : '—'}</td></tr>
+      ${filas.map(f => `<tr class="click" data-emp="${f.id}"><td><b>${esc(f.nombre)}</b>${f.sinH ? `<div class="tiny" style="color:#8A6A00">${f.sinH} días sin horario</div>` : ''}</td><td class="r">${f.conH}</td><td class="r">${f.marc}</td><td class="r">${f.faltas ? `<span class="chip red">${f.faltas}</span>` : '—'}</td><td class="r">${f.tarde ? `<span style="color:#B42318;font-weight:600">${minTxt(f.tarde)}</span><div class="tiny muted">${f.nTarde} día${f.nTarde > 1 ? 's' : ''}</div>` : '—'}</td><td class="r">${f.extra ? `<b>${N(f.extra / 60)} h</b>${f.heAp ? `<div class="tiny" style="color:var(--verde,#0E8A5F)">${N(f.heAp)} h aprobadas</div>` : ''}${f.heCand ? `<div class="tiny" style="color:#8A6A00">${f.heCand} día${f.heCand > 1 ? 's' : ''} por aprobar</div>` : ''}` : '—'}</td><td class="r">${f.pend ? `<span class="chip warn">${f.pend}</span>` : '—'}</td></tr>
         <tr class="q-det hidden" data-det="${f.id}"><td colspan="7"><table class="t"><thead><tr><th>Día</th><th>Horario</th><th>Entrada</th><th>Salida</th><th class="r">Tarde</th><th class="r">Extra</th><th class="r">Trabajado</th></tr></thead><tbody>
-          ${f.ds.map(d => `<tr class="click ${d.falta ? 'q-falta' : ''}" data-dia="${d.fecha}"><td>${DIAS_LARGO[pf(d.fecha).getDay()].slice(0, 3)} ${fc(d.fecha)}</td><td class="small">${d.sin_horario ? '<span class="muted">Sin horario</span>' : horarioTxt(d)}</td><td>${d.m_entrada ? horaCorta(d.m_entrada) : d.falta ? '<span class="chip red">Falta</span>' : '—'}</td><td>${d.m_salida ? horaCorta(d.m_salida) : '—'}</td><td class="r">${+d.tarde_min ? `<span style="color:#B42318">${minTxt(d.tarde_min)}</span>` : '—'}</td><td class="r">${+d.extra_min ? minTxt(d.extra_min) : '—'}</td><td class="r small">${d.trabajado_min != null ? minTxt(d.trabajado_min) : '—'}${+d.n_pendientes ? ' <span class="chip warn" style="padding:0 6px">' + d.n_pendientes + '</span>' : ''}</td></tr>`).join('')}
+          ${f.ds.map(d => `<tr class="click ${d.falta ? 'q-falta' : ''}" data-dia="${d.fecha}"><td>${DIAS_LARGO[pf(d.fecha).getDay()].slice(0, 3)} ${fc(d.fecha)}</td><td class="small">${d.sin_horario ? '<span class="muted">Sin horario</span>' : horarioTxt(d)}</td><td>${d.m_entrada ? horaCorta(d.m_entrada) : d.falta ? '<span class="chip red">Falta</span>' : '—'}</td><td>${d.m_salida ? horaCorta(d.m_salida) : '—'}</td><td class="r">${+d.tarde_min ? `<span style="color:#B42318">${minTxt(d.tarde_min)}</span>` : '—'}</td><td class="r">${+d.extra_min ? `${d.he?.tipo === 'aprobada' || d.he?.tipo === 'solicitud' ? d.he.html : minTxt(d.extra_min)}${d.he?.tipo === 'candidata' ? ` <button class="btn sm pri" data-he="${f.id}|${d.fecha}">Aprobar</button>` : ''}` : '—'}</td><td class="r small">${d.trabajado_min != null ? minTxt(d.trabajado_min) : '—'}${+d.n_pendientes ? ' <span class="chip warn" style="padding:0 6px">' + d.n_pendientes + '</span>' : ''}</td></tr>`).join('')}
         </tbody></table></td></tr>`).join('')}
     </tbody></table></div>
     <p class="small muted" style="margin-top:10px">Tolerancia de llegada tarde y mínimo para horas extra se configuran en Ajustes. Toca un empleado para ver cada día; toca un día para revisar sus marcajes.</p>`);
   $('#selq', m).onchange = e => location.hash = `#/marcajes/q/${e.target.value}`;
   $$('[data-emp]', m).forEach(tr => tr.onclick = () => $(`[data-det="${tr.dataset.emp}"]`, m).classList.toggle('hidden'));
   $$('[data-dia]', m).forEach(tr => tr.onclick = ev => { ev.stopPropagation(); location.hash = `#/marcajes/${tr.dataset.dia}`; });
+  $('#he-q', m) && ($('#he-q', m).onclick = () => aprobarExtraMarcaje(candHe, () => vMarcajesQuincena(per.id)));
+  $$('[data-he]', m).forEach(b => b.onclick = ev => { ev.stopPropagation(); const [id, fe] = b.dataset.he.split('|'); aprobarExtraMarcaje(candHe.filter(c => c.empleado_id === id && c.fecha === fe), () => vMarcajesQuincena(per.id)); });
   $('#aprobar-q', m) && ($('#aprobar-q', m).onclick = async () => { if (!await confirmar('Aprobar marcajes', `Se aprueban ${pend.length} marcajes por revisar de ${esc(per.nombre)}. Revisa antes los que tengan dudas.`, 'Aprobar todos')) return; try { const n = await q(sb.rpc('pl_revisar_marcajes', { p_ids: pend.map(r => r.id), p_accion: 'aprobar' })); toast(`${n} marcajes aprobados`); vMarcajesQuincena(per.id); } catch (er) { toast(errMsg(er), true); } });
   $('#aplicar', m) && ($('#aplicar', m).onclick = () => {
     const h = hoja('Aplicar marcajes a la planilla', `<form style="display:grid;gap:12px"><p class="small" style="margin:0">${esc(per.nombre)}. Solo se toman los marcajes <b>aprobados</b>${tot('pend') ? ` (hay ${tot('pend')} por revisar que no se tomarán)` : ''}.</p>
-      <ul class="small" style="margin:0;padding-left:18px;line-height:1.7"><li>Las <b>llegadas tarde</b> se pasan a la asistencia de cada día (se descuentan en la planilla).</li><li>Las <b>horas extra</b> se crean como solicitudes en Solicitudes para que decidan si se pagan o van a descanso.</li></ul>
+      <ul class="small" style="margin:0;padding-left:18px;line-height:1.7"><li>Las <b>llegadas tarde</b> se pasan a la asistencia de cada día (se descuentan en la planilla).</li><li>Las <b>horas extra</b> que todavía no se aprobaron se crean como solicitudes en Solicitudes para que decidan si se pagan o van a descanso. Para aprobarlas de una vez usa <b>Aprobar horas extra</b>.</li></ul>
       <label class="chk"><input type="checkbox" name="faltas">También marcar <b>falta</b> los días con horario y sin ningún marcaje</label>
       <p class="tiny muted" style="margin:0">Se puede volver a aplicar: actualiza las llegadas tarde y no duplica horas extra.</p>
       <div class="pie"><button class="btn pri">Aplicar</button></div></form>`);
     $('form', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target); try { const r = await q(sb.rpc('pl_aplicar_marcajes', { p_periodo: per.id, p_faltas: !!x.faltas })); h.cerrar(); toast(`Aplicado: ${r.tardes} días con llegada tarde actualizados, ${r.horas_extra} solicitudes de horas extra${x.faltas ? `, ${r.faltas} faltas` : ''}`); vMarcajesQuincena(per.id); } catch (er) { toast(errMsg(er), true); } };
   });
+}
+
+/* ===================== Horas extra desde el marcaje y pago de horas del banco (v70) ===================== */
+// horas extra (pendientes y aprobadas) de un rango, para cruzarlas con el resumen del marcaje
+const cargarHeRango = (desde, hasta) => q(sb.from('pl_horas_extra').select('id,empleado_id,fecha,horas,estado,destino,origen,hora_inicio,hora_fin')
+  .eq('tipo', 'extra').in('estado', ['pendiente', 'aprobada']).gte('fecha', desde).lte('fecha', hasta)).catch(() => []);
+// estado de las horas extra de un día del marcaje: 'candidata' (se puede aprobar), 'aprobada', 'solicitud' (pendiente del empleado) o null
+function estadoExtraDia(r, hes, propio) {
+  if (!r || !(+r.extra_min > 0)) return null;
+  const hs = hes.filter(h => h.empleado_id === r.empleado_id && h.fecha === r.fecha);
+  const ap = hs.filter(h => h.estado === 'aprobada');
+  if (ap.length) { const hrs = ap.reduce((a, h) => a + +h.horas, 0); return { tipo: 'aprobada', horas: hrs, html: `<span class="chip ok" title="${ap.map(h => etiquetaHoras(h)).join(' · ')}">Extra aprobada ${N(hrs)} h · ${ap.every(h => h.destino === 'pagar') ? 'pago' : ap.every(h => h.destino !== 'pagar') ? 'banco' : 'pago y banco'}</span>` }; }
+  if (hs.some(h => h.estado === 'pendiente' && h.origen !== 'marcaje')) return { tipo: 'solicitud', html: `<span class="chip warn" title="El empleado pidió horas extra ese día; se resuelve en Solicitudes">Extra ${minTxt(r.extra_min)} · solicitud pendiente</span>` };
+  const hoy = iso(hoyHN());
+  if (propio || r.fecha > hoy || r.fecha < addDias(hoy, -62)) return { tipo: 'no', html: `<span class="chip ok">Extra ${minTxt(r.extra_min)}</span>` };
+  return { tipo: 'candidata', html: `<span class="chip ok">Extra ${minTxt(r.extra_min)}</span>` };
+}
+// items: [{ empleado_id, fecha, nombre, min, pend }]
+function aprobarExtraMarcaje(items, despues) {
+  if (!items.length) return toast('No hay horas extra por aprobar', true);
+  const anyPend = items.some(i => +i.pend > 0);
+  const h = hoja(items.length > 1 ? `Aprobar horas extra · ${items.length} días` : `Aprobar horas extra · ${corto(items[0].nombre)}`, `<form id="fhm" style="display:grid;gap:12px">
+    <p class="small muted" style="margin:0">Salen del marcaje: el tiempo después de la hora de salida (o todo el día si era su día libre), sin la hora de almuerzo y en bloques de 15 min. Quedan <b>aprobadas</b> de una vez.</p>
+    ${items.length > 1 ? `<div class="he-sec"><span class="small" data-tot></span><button type="button" class="btn sm borde" data-todos>Quitar todos</button></div>` : ''}
+    <div class="he-lista">${items.map(i => `<label class="chk he-it"><input type="checkbox" name="it" value="${i.empleado_id}|${i.fecha}" data-min="${+i.min}" checked><span class="grow"><b>${esc(corto(i.nombre))}</b> <span class="tiny muted">${DIAS_LARGO[pf(i.fecha).getDay()].slice(0, 3)} ${fc(i.fecha)}</span>${+i.pend ? ` <span class="chip warn" style="padding:0 6px" title="Marcas por revisar">${i.pend} por revisar</span>` : ''}</span><b class="num">${minTxt(i.min)}</b></label>`).join('')}</div>
+    ${items.length === 1 ? '<span class="small" data-tot hidden></span>' : ''}
+    <div><div class="small" style="margin-bottom:6px">Las horas</div><div class="segm"><button type="button" class="on" data-v="compensar">Van al banco de horas</button><button type="button" data-v="pagar">Se pagan en planilla</button></div><input type="hidden" name="destino" value="compensar"></div>
+    <div class="tiny muted" data-dest>Se suman a su saldo para tomar descanso compensatorio.</div>
+    ${anyPend ? '<label class="chk"><input type="checkbox" name="marcas" checked>Aprobar también las marcas por revisar de esos días</label><p class="tiny muted" style="margin:-6px 0 0">Las horas mostradas cuentan esas marcas. Si no las apruebas, los días con marcas por revisar se saltan.</p>' : ''}
+    <div class="pie"><button class="btn pri">Aprobar horas extra</button></div></form>`);
+  const f = $('#fhm', h.el);
+  const pintar = () => { const ch = $$('[name=it]:checked', f); const t = $('[data-tot]', f); if (t) t.innerHTML = `<b>${ch.length}</b> de ${items.length} días · <b>${minTxt(ch.reduce((a, c) => a + +c.dataset.min, 0))}</b>`; const b = $('[data-todos]', f); if (b) b.textContent = ch.length ? 'Quitar todos' : 'Marcar todos'; };
+  $$('[name=it]', f).forEach(c => c.onchange = pintar); pintar();
+  $('[data-todos]', f) && ($('[data-todos]', f).onclick = () => { const on = !$$('[name=it]:checked', f).length; $$('[name=it]', f).forEach(c => c.checked = on); pintar(); });
+  $$('.segm button', f).forEach(b => b.onclick = () => { $$('.segm button', f).forEach(x => x.classList.toggle('on', x === b)); f.destino.value = b.dataset.v;
+    $('[data-dest]', f).textContent = b.dataset.v === 'pagar' ? `Se pagan en la planilla de salario abierta de esa fecha (× ${N(+S.par?.factor_he || 1.25)}).` : 'Se suman a su saldo para tomar descanso compensatorio.'; });
+  f.onsubmit = async ev => {
+    ev.preventDefault();
+    const sel = $$('[name=it]:checked', f).map(c => { const [empleado_id, fecha] = c.value.split('|'); return { empleado_id, fecha }; });
+    if (!sel.length) return toast('Elige al menos un día', true);
+    const b = $('button.pri', f); b.disabled = true;
+    try {
+      const r = await q(sb.rpc('pl_aprobar_extra_marcaje', { p_items: sel, p_destino: f.destino.value, p_aprobar_marcas: anyPend ? !!f.marcas?.checked : true }));
+      h.cerrar();
+      const n = (+r.creadas || 0) + (+r.aprobadas || 0);
+      if (r.omitidas?.length) {
+        const nom = id => items.find(i => i.empleado_id === id)?.nombre || '';
+        const hh = hoja('Horas extra aprobadas', `<p style="margin:0 0 10px">${n ? `Se aprobaron <b>${n}</b> día${n > 1 ? 's' : ''} · <b>${N(r.horas)} h</b>${f.destino.value === 'pagar' ? ' para pago' : ' al banco de horas'}.` : 'No se aprobó ningún día.'}</p>
+          <div class="small" style="margin-bottom:6px"><b>No se aprobaron (${r.omitidas.length}):</b></div>
+          <div class="he-lista">${r.omitidas.map(o => `<div class="he-it"><b>${esc(corto(nom(o.empleado_id)))}</b> <span class="tiny muted">${o.fecha ? fc(o.fecha) : ''}</span><div class="tiny">${esc(o.motivo)}</div></div>`).join('')}</div>
+          <div class="pie" style="margin-top:12px"><button class="btn pri" data-ok>Entendido</button></div>`);
+        $('[data-ok]', hh.el).onclick = hh.cerrar;
+      } else toast(`${n} día${n > 1 ? 's' : ''} aprobado${n > 1 ? 's' : ''} · ${N(r.horas)} h ${f.destino.value === 'pagar' ? 'para pago' : 'al banco de horas'}${+r.marcas_aprobadas ? ` · ${r.marcas_aprobadas} marcas aprobadas` : ''}`);
+      despues && despues();
+    } catch (er) { b.disabled = false; toast(errMsg(er), true); }
+  };
+}
+// Pasar a pago horas extra ya registradas que están en el banco (o regresarlas al banco si la planilla sigue abierta)
+// valorHora(empId) → salario por hora (solo administración; supervisión no ve montos)
+function pagarHorasRegistradas({ empleados, empId = '', valorHora = null, despues }) {
+  let persP = null, cambio = false;
+  const h = hoja('Pagar horas extra registradas', `<form id="fph" style="display:grid;gap:12px">
+    <label class="f">Empleado<select class="inp" name="emp" required>${empleados.length > 1 ? '<option value="">Elige un empleado</option>' : ''}${empleados.map(x => `<option value="${x.id}" ${x.id === empId ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></label>
+    <div data-cuerpo></div></form>`, { ancha: true, alCerrar: () => { if (cambio && despues) despues(); } });
+  const f = $('#fph', h.el), cuerpo = $('[data-cuerpo]', f);
+  const fh = 1 * (+S.par?.factor_he || 1.25);
+  const fila = (x, nombrePer) => `<label class="chk he-it"><input type="checkbox" name="${x.destino === 'pagar' ? 'pg' : 'bk'}" value="${x.id}" data-h="${+x.horas}"><span class="grow"><b>${DIAS_LARGO[pf(x.fecha).getDay()].slice(0, 3)} ${fc(x.fecha)}</b>${x.hora_inicio ? ` <span class="tiny muted">${horaCorta(x.hora_inicio)} – ${horaCorta(x.hora_fin)}</span>` : ''}<div class="tiny muted">${esc(x.motivo || '')} · ${x.origen === 'marcaje' ? 'según marcaje' : x.origen === 'supervision' ? 'registrada por supervisión' : 'registrada por el empleado'}${nombrePer ? ' · ' + esc(nombrePer) : ''}</div></span><b class="num">${N(x.horas)} h</b></label>`;
+  const cargar = async () => {
+    const emp = f.emp.value;
+    if (!emp) { cuerpo.innerHTML = '<div class="muted small">Elige un empleado para ver sus horas extra.</div>'; return; }
+    cuerpo.innerHTML = '<div class="muted small">Cargando…</div>';
+    try {
+      const [hes, b, pers] = await Promise.all([
+        q(sb.from('pl_horas_extra').select('id,fecha,horas,destino,periodo_id,motivo,origen,hora_inicio,hora_fin').eq('empleado_id', emp).eq('tipo', 'extra').eq('estado', 'aprobada').order('fecha', { ascending: false }).limit(300)),
+        q(sb.rpc('pl_banco_horas', { p_emp: emp })), persP || (persP = quincenasSalario())]);
+      if (f.emp.value !== emp) return;
+      const abiertas = pers.filter(p => p.estado === 'abierta').sort((a, z) => a.fecha_inicio.localeCompare(z.fecha_inicio));
+      const hoy = iso(hoyHN());
+      const defPer = quincenaDe(abiertas, hoy) || abiertas.find(p => p.fecha_fin >= hoy) || abiertas[abiertas.length - 1];
+      const enBanco = hes.filter(x => x.destino === 'compensar');
+      const enPago = hes.filter(x => x.destino === 'pagar' && (!x.periodo_id || abiertas.some(p => p.id === x.periodo_id)));
+      const nomPer = id => abiertas.find(p => p.id === id)?.nombre || 'próxima planilla de salario';
+      const vh = valorHora ? +valorHora(emp) || 0 : 0;
+      const factor = +b.factor || 1;
+      cuerpo.innerHTML = `<div class="totales" style="grid-template-columns:repeat(${vh ? 3 : 2},1fr);margin:0"><div class="neto"><div class="k">Disponible en el banco</div><div class="v">${N(b.disponible)} h</div></div><div><div class="k">Ya pagadas</div><div class="v">${N(b.pagadas)} h</div></div>${vh ? `<div><div class="k">Valor por hora extra</div><div class="v">${L(vh * fh)}</div><div class="tiny muted">${L(vh)} × ${N(fh)}</div></div>` : ''}</div>
+        <div class="he-sec"><h4>En el banco de horas (${enBanco.length})</h4>${enBanco.length > 1 ? '<button type="button" class="btn sm borde" data-todos="bk">Marcar todos</button>' : ''}</div>
+        ${enBanco.length ? `<div class="he-lista">${enBanco.map(x => fila(x)).join('')}</div>` : '<div class="vacio" style="padding:14px">No tiene horas extra en el banco</div>'}
+        ${enBanco.length ? `<div class="small" data-res></div>
+          ${abiertas.length ? `<label class="f">Se pagan en<select class="inp" name="per">${abiertas.map(p => `<option value="${p.id}" ${p.id === defPer?.id ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select></label>` : '<p class="small" style="margin:0;color:#8A6A00">No hay planilla de salario abierta: se pagarán en la próxima que se cree.</p>'}
+          <div class="pie" style="margin:0"><button type="button" class="btn pri" data-pagar disabled>Pagar horas elegidas</button></div>` : ''}
+        ${enPago.length ? `<div class="he-sec" style="margin-top:6px"><h4>En pago, planilla abierta (${enPago.length})</h4></div><div class="he-lista">${enPago.map(x => fila(x, nomPer(x.periodo_id))).join('')}</div>
+          <div class="pie" style="margin:0"><button type="button" class="btn borde" data-regresar disabled>Regresar al banco</button></div>` : ''}
+        <p class="tiny muted" style="margin:0">Las horas que pasan a pago salen del banco${factor !== 1 ? ` (× ${N(factor)} cada una)` : ''} y aparecen en la planilla como “Horas extra” × ${N(fh)}. Mientras la planilla esté abierta se pueden regresar al banco.</p>`;
+      const pintar = () => {
+        const sel = $$('[name=bk]:checked', cuerpo), hrs = sel.reduce((a, c) => a + +c.dataset.h, 0), queda = +b.disponible - hrs * factor;
+        const r = $('[data-res]', cuerpo);
+        if (r) r.innerHTML = sel.length ? `Elegidas: <b>${N(hrs)} h</b>${vh ? ` · se pagan <b>${L(Math.round(hrs * vh * fh))}</b>` : ''} · el banco queda en <b>${N(queda)} h</b>${queda < -0.004 ? ' <span class="chip red">no alcanza: ya usó o pidió descanso con parte de esas horas</span>' : ''}` : '<span class="muted">Marca las horas que se van a pagar.</span>';
+        const bp = $('[data-pagar]', cuerpo); if (bp) { bp.disabled = !sel.length || queda < -0.004; bp.textContent = sel.length ? `Pagar ${N(hrs)} h` : 'Pagar horas elegidas'; }
+        const pg = $$('[name=pg]:checked', cuerpo), br = $('[data-regresar]', cuerpo); if (br) { br.disabled = !pg.length; br.textContent = pg.length ? `Regresar ${N(pg.reduce((a, c) => a + +c.dataset.h, 0))} h al banco` : 'Regresar al banco'; }
+        const bt = $('[data-todos]', cuerpo); if (bt) bt.textContent = sel.length === enBanco.length ? 'Quitar todos' : 'Marcar todos';
+      };
+      $$('input[type=checkbox]', cuerpo).forEach(c => c.onchange = pintar); pintar();
+      $('[data-todos]', cuerpo) && ($('[data-todos]', cuerpo).onclick = () => { const all = $$('[name=bk]', cuerpo); const on = $$('[name=bk]:checked', cuerpo).length !== all.length; all.forEach(c => c.checked = on); pintar(); });
+      $('[data-pagar]', cuerpo) && ($('[data-pagar]', cuerpo).onclick = async ev => {
+        const ids = $$('[name=bk]:checked', cuerpo).map(c => c.value), hrs = $$('[name=bk]:checked', cuerpo).reduce((a, c) => a + +c.dataset.h, 0);
+        const per = f.per?.value || null;
+        if (!await confirmar('Pagar horas extra', `${esc(empleados.find(x => x.id === emp)?.nombre || '')}: <b>${N(hrs)} h</b> salen del banco de horas y se pagan en <b>${esc(per ? nomPer(per) : 'la próxima planilla de salario')}</b>${vh ? ` por <b>${L(Math.round(hrs * vh * fh))}</b>` : ''}.`, 'Pagar')) return;
+        ev.target.disabled = true;
+        try { const r = await q(sb.rpc('pl_horas_extra_pago', { p_ids: ids, p_pagar: true, p_periodo: per })); toast(`${N(r.horas)} h pasadas a pago`); cambio = true; cargar(); }
+        catch (er) { ev.target.disabled = false; toast(errMsg(er), true); }
+      });
+      $('[data-regresar]', cuerpo) && ($('[data-regresar]', cuerpo).onclick = async ev => {
+        const ids = $$('[name=pg]:checked', cuerpo).map(c => c.value);
+        ev.target.disabled = true;
+        try { const r = await q(sb.rpc('pl_horas_extra_pago', { p_ids: ids, p_pagar: false })); toast(`${N(r.horas)} h regresadas al banco`); cambio = true; cargar(); }
+        catch (er) { ev.target.disabled = false; toast(errMsg(er), true); }
+      });
+    } catch (er) { cuerpo.innerHTML = `<div class="err">${esc(errMsg(er))}</div>`; }
+  };
+  f.emp.onchange = cargar; cargar();
 }
 
 /* ===================== HORARIOS y plantillas ===================== */
@@ -3232,7 +3372,7 @@ async function vEmpleadosSup() {
   const filas = await q(sb.rpc('pl_saldos_horas'));
   const tot = filas.reduce((a, r) => a + +r.disponible, 0);
   const m = shell(`<div class="top"><div><h1>Empleados</h1><div class="muted small">${filas.length} activos · saldo de horas para descanso</div></div>
-      <div class="acc"><button class="btn borde" id="ajh">± Ajustar saldo</button><button class="btn pri" id="agh">${ICON.mas}Agregar horas extra</button></div></div>
+      <div class="acc"><button class="btn borde" id="pgh">Pagar horas</button><button class="btn borde" id="ajh">± Ajustar saldo</button><button class="btn pri" id="agh">${ICON.mas}Agregar horas extra</button></div></div>
     <div class="totales" style="grid-template-columns:repeat(2,1fr);margin-bottom:14px"><div class="neto"><div class="k">Horas de descanso disponibles (todos)</div><div class="v">${N(tot)}</div></div>
       <div><div class="k">Horas extra por aprobar</div><div class="v">${N(filas.reduce((a, r) => a + +r.extra_pendiente, 0))}</div></div></div>
     <div class="lista sup-movil">${filas.map(r => `<a class="item" href="#/empleado/${r.id}"><div class="grow"><div class="t">${esc(r.nombre)}</div><div class="s">${esc(r.cargo || '')}${+r.extra_pendiente ? ` · ${N(r.extra_pendiente)} h por aprobar` : ''}</div></div>
@@ -3247,6 +3387,7 @@ async function vEmpleadosSup() {
   const lista = filas.filter(r => r.id !== S.yo?.id);
   $('#agh', m).onclick = () => agregarHorasSup({ empleados: lista, despues: vEmpleadosSup });
   $('#ajh', m).onclick = () => ajustarHoras({ empleados: lista, despues: vEmpleadosSup });
+  $('#pgh', m).onclick = () => pagarHorasRegistradas({ empleados: lista.filter(r => +r.disponible > 0 || +r.ganadas > 0), despues: vEmpleadosSup });
   $$('[data-add]', m).forEach(b => b.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); agregarHorasSup({ empleados: lista, empId: b.dataset.add, despues: vEmpleadosSup }); });
   $$('tr[data-e]', m).forEach(tr => tr.onclick = () => location.hash = '#/empleado/' + tr.dataset.e);
 }
@@ -3259,7 +3400,7 @@ async function vEmpleadoSup(id) {
   const nombres = await nombresUsuarios(hxs.map(h => h.solicitado_por).concat(aj.map(a => a.creado_por)));
   const m = shell(`<div class="miga"><a href="#/empleados">Empleados</a></div>
     <div class="top"><div><h1>${esc(e.nombre)}</h1><div class="muted small">${esc(e.cargo || 'Sin cargo')}${e.fecha_ingreso ? ` · ingreso ${fc(e.fecha_ingreso)}` : ''}</div></div>
-      <div class="acc">${propio ? '' : `<button class="btn borde" id="ajh">± Ajustar saldo</button><button class="btn pri" id="agh">${ICON.mas}Agregar horas extra</button>`}</div></div>
+      <div class="acc">${propio ? '' : `<button class="btn borde" id="pgh">Pagar horas</button><button class="btn borde" id="ajh">± Ajustar saldo</button><button class="btn pri" id="agh">${ICON.mas}Agregar horas extra</button>`}</div></div>
     <h2 style="margin:6px 0 10px">Banco de horas</h2>${htmlBanco(banco)}${htmlAjustes(aj, nombres)}
     ${fers.length ? `<h2 style="margin:22px 0 10px">Feriados</h2>${htmlFeriados(fers)}` : ''}
     <h2 style="margin:22px 0 10px">Historial de horas</h2>
@@ -3268,6 +3409,7 @@ async function vEmpleadoSup(id) {
       <td class="r num">${h.tipo === 'descanso' ? '−' : '+'}${N(h.horas)} h</td><td class="r">${chipEstado(h.estado)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vacio">Sin horas registradas</div>'}`);
   $('#agh', m) && ($('#agh', m).onclick = () => agregarHorasSup({ empleados: [{ id: e.id, nombre: e.nombre }], empId: e.id, despues: () => vEmpleadoSup(id) }));
   $('#ajh', m) && ($('#ajh', m).onclick = () => ajustarHoras({ empleados: [{ id: e.id, nombre: e.nombre }], empId: e.id, despues: () => vEmpleadoSup(id) }));
+  $('#pgh', m) && ($('#pgh', m).onclick = () => pagarHorasRegistradas({ empleados: [{ id: e.id, nombre: e.nombre }], empId: e.id, despues: () => vEmpleadoSup(id) }));
 }
 
 // Ajustes manuales del saldo de horas (suman o restan), visibles para el empleado y la supervisión
@@ -3423,7 +3565,7 @@ async function vTiempoEmpleados() {
   const sum = k => fs.reduce((a, r) => a + +r[k], 0);
   const f = fs[0]?.factor_he || 1.25;
   const m = shell(`<div class="miga"><a href="#/empleados">Empleados</a></div><div class="top"><div><h1>Vacaciones y horas extra</h1><div class="muted small">${fs.length} empleados activos · al ${fl(iso(hoyHN()))}</div></div>
-      <div class="acc"><button class="btn borde" id="xls">${ICON.doc || ''}Descargar Excel</button></div></div>
+      <div class="acc"><button class="btn borde" id="xls">${ICON.doc || ''}Descargar Excel</button><button class="btn pri" id="pagh">Pagar horas extra</button></div></div>
     <div class="totales" style="margin-bottom:14px">
       <div><div class="k">Días de vacaciones disponibles</div><div class="v">${N(sum('vac_disponible'))}</div></div>
       <div><div class="k">Valor de esas vacaciones</div><div class="v">${L(sum('vac_valor'))}</div></div>
@@ -3432,12 +3574,15 @@ async function vTiempoEmpleados() {
     <div class="panel" style="padding:0"><div class="tscroll"><table class="t"><thead><tr><th>Empleado</th><th class="r">Vacaciones disponibles</th><th class="r">Valor vacaciones</th><th class="r">Horas extra en banco</th><th class="r">Valor si se pagan</th><th class="r">Por aprobar</th></tr></thead>
       <tbody>${fs.map(r => `<tr class="click" data-e="${r.id}"><td><b>${esc(r.nombre)}</b><div class="tiny muted">${esc(r.cargo || '')}${r.vac_proximo ? `${r.cargo ? ' · ' : ''}próximas vacaciones: +${N(r.vac_proximo_dias)} días el ${fc(r.vac_proximo)}` : ''}</div></td>
         <td class="r num">${N(r.vac_disponible)} días${+r.vac_pendientes ? `<div class="tiny muted">${N(r.vac_pendientes)} solicitados</div>` : ''}</td><td class="r num">${+r.vac_valor ? L(r.vac_valor) : '—'}</td>
-        <td class="r num"><b>${N(r.horas_saldo)} h</b>${+r.horas_pagadas ? `<div class="tiny muted">${N(r.horas_pagadas)} h ya pagadas</div>` : ''}</td>
+        <td class="r num"><b>${N(r.horas_saldo)} h</b>${+r.horas_pagadas ? `<div class="tiny muted">${N(r.horas_pagadas)} h ya pagadas</div>` : ''}${+r.horas_saldo > 0 ? `<div><button class="btn sm" data-pagar="${r.id}" style="margin-top:4px">Pagar</button></div>` : ''}</td>
         <td class="r num">${+r.horas_valor ? `<b>${L(r.horas_valor)}</b><div class="tiny muted">${L(r.valor_hora)} × ${N(f)} por hora</div>` : '—'}</td>
         <td class="r num">${+r.horas_pendientes ? `${N(r.horas_pendientes)} h` : '—'}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td><b>Total</b></td><td class="r num"><b>${N(sum('vac_disponible'))} días</b></td><td class="r num"><b>${L(sum('vac_valor'))}</b></td><td class="r num"><b>${N(sum('horas_saldo'))} h</b></td><td class="r num"><b>${L(sum('horas_valor'))}</b></td><td></td></tr></tfoot></table></div></div>
     <p class="tiny muted" style="margin-top:10px">Valor de vacaciones = días disponibles × salario mensual ÷ 30. Valor de horas extra = horas en el banco × salario por hora (salario ÷ 240) × ${N(f)}. Son montos de referencia con el salario actual.</p>`);
   $$('tr[data-e]', m).forEach(tr => tr.onclick = () => location.hash = '#/empleado/' + tr.dataset.e);
+  const pagar = empId => pagarHorasRegistradas({ empleados: fs.filter(r => +r.horas_saldo > 0 || r.id === empId).map(r => ({ id: r.id, nombre: r.nombre })), empId, valorHora: id => +fs.find(r => r.id === id)?.valor_hora || 0, despues: vTiempoEmpleados });
+  $('#pagh', m).onclick = () => pagar('');
+  $$('[data-pagar]', m).forEach(b => b.onclick = ev => { ev.stopPropagation(); pagar(b.dataset.pagar); });
   $('#xls', m).onclick = () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fs.map(r => ({ Empleado: r.nombre, Cargo: r.cargo || '', 'Salario mensual': +r.salario, 'Vacaciones disponibles (días)': +r.vac_disponible, 'Vacaciones solicitadas': +r.vac_pendientes, 'Valor vacaciones': +r.vac_valor, 'Horas extra en banco': +r.horas_saldo, 'Valor hora': +r.valor_hora, 'Valor si se pagan las horas': +r.horas_valor, 'Horas por aprobar': +r.horas_pendientes }))), 'Vacaciones y horas');
@@ -4658,7 +4803,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '69';
+const APP_VERSION = '70';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
