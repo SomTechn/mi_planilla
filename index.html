@@ -425,6 +425,12 @@ tr.disp-bloq td{opacity:.75}
 .marca-cel img,.marca-cel .sinfoto{width:38px;height:38px;border-radius:50%;object-fit:cover;background:#E6F0FE;flex:none}
 .marca-cel span{display:grid}
 .marcas-t td{white-space:nowrap}
+.marcas-t .mk-res{display:flex;flex-wrap:wrap;align-items:center;gap:5px 6px;white-space:normal;min-width:170px;max-width:250px}
+.marcas-t .mk-res .chip{white-space:nowrap}
+.marcas-t .mk-res .tiny{flex-basis:100%}
+.marcas-t td:first-child{white-space:normal;min-width:150px}
+@media (max-width:1280px){.marcas-t .mk-res{min-width:150px;max-width:190px}}
+@media (max-width:640px){.marcas-t .mk-res{max-width:none}}
 .chip.comb{background:#E7F7EE;color:#11733F}
 .chip.dep{background:#F1EAFE;color:#5B2DB0}
 .carta{background:#fff;color:#1a1a1a;max-width:816px;margin:0 auto;padding:56px 64px 40px;border:1px solid var(--linea);border-radius:6px;box-shadow:var(--sombra,0 6px 24px rgba(10,42,102,.08));font-family:'Times New Roman',Georgia,serif;font-size:16px;line-height:1.75;min-width:0}
@@ -3020,10 +3026,10 @@ async function vMarcajesDia(fecha) {
     : (propio(e.id) || fecha > hoy ? '<span class="muted">—</span>' : `<button class="btn sm borde mk-add" data-add="${e.id}|${t}" title="Agregar marcaje manual">+ Agregar</button>`);
   const result = e => { const r = rs[e.id]; if (!r) return ''; const p = [];
     if (+r.tarde_min) p.push(`<span class="chip red">Tarde ${minTxt(r.tarde_min)}</span>`);
-    if (exD[e.id]) p.push(`<span class="he-acc">${exD[e.id].html}${exD[e.id].tipo === 'candidata' ? `<button class="btn sm pri" data-he="${e.id}">Aprobar extra</button>` : ''}</span>`);
+    if (exD[e.id]) p.push(exD[e.id].html + (exD[e.id].tipo === 'candidata' ? `<button class="btn sm pri" data-he="${e.id}">Aprobar extra</button>` : ''));
     if (r.falta) p.push('<span class="chip red">Falta</span>');
     if (r.trabajado_min != null) p.push(`<span class="tiny muted">${minTxt(r.trabajado_min)} trabajadas</span>`);
-    return p.join(' ') || '<span class="muted">—</span>'; };
+    return p.length ? `<div class="mk-res">${p.join('')}</div>` : '<span class="muted">—</span>'; };
   const m = shell(`<div class="top"><div><h1>Marcajes</h1><div class="muted small">${DIAS_LARGO[pf(fecha).getDay()]} ${fl(fecha)} · ${Object.keys(por).length} de ${emps.length} empleados marcaron${per ? ' · ' + esc(per.nombre) : ''}</div></div>
       <div class="acc"><button class="btn borde sm" data-d="-1" aria-label="Día anterior">‹</button><input class="inp" type="date" id="fd" value="${fecha}" max="${hoy}" style="width:auto"><button class="btn borde sm" data-d="1" ${fecha >= hoy ? 'disabled' : ''} aria-label="Día siguiente">›</button>
       ${pend.length ? `<button class="btn pri sm" id="aprobar-dia">Aprobar ${pend.length} por revisar</button>` : ''}${candHe.length > 1 ? `<button class="btn ama sm" id="he-dia">Aprobar horas extra (${candHe.length})</button>` : ''}</div></div>
@@ -3139,7 +3145,7 @@ function estadoExtraDia(r, hes, propio) {
   if (!r || !(+r.extra_min > 0)) return null;
   const hs = hes.filter(h => h.empleado_id === r.empleado_id && h.fecha === r.fecha);
   const ap = hs.filter(h => h.estado === 'aprobada');
-  if (ap.length) { const hrs = ap.reduce((a, h) => a + +h.horas, 0); return { tipo: 'aprobada', horas: hrs, html: `<span class="chip ok" title="${ap.map(h => etiquetaHoras(h)).join(' · ')}">Extra aprobada ${N(hrs)} h · ${ap.every(h => h.destino === 'pagar') ? 'pago' : ap.every(h => h.destino !== 'pagar') ? 'banco' : 'pago y banco'}</span>` }; }
+  if (ap.length) { const hrs = ap.reduce((a, h) => a + +h.horas, 0); return { tipo: 'aprobada', horas: hrs, html: `<span class="chip ok" title="${ap.map(h => etiquetaHoras(h)).join(' · ')}">✓ Extra ${N(hrs)} h · ${ap.every(h => h.destino === 'pagar') ? 'pago' : ap.every(h => h.destino !== 'pagar') ? 'banco' : 'pago y banco'}</span>` }; }
   if (hs.some(h => h.estado === 'pendiente' && h.origen !== 'marcaje')) return { tipo: 'solicitud', html: `<span class="chip warn" title="El empleado pidió horas extra ese día; se resuelve en Solicitudes">Extra ${minTxt(r.extra_min)} · solicitud pendiente</span>` };
   const hoy = iso(hoyHN());
   if (propio || r.fecha > hoy || r.fecha < addDias(hoy, -62)) return { tipo: 'no', html: `<span class="chip ok">Extra ${minTxt(r.extra_min)}</span>` };
@@ -4803,7 +4809,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '70';
+const APP_VERSION = '71';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
