@@ -429,6 +429,20 @@ tr.disp-bloq td{opacity:.75}
 .marcas-t .mk-res .chip{white-space:nowrap}
 .marcas-t .mk-res .tiny{flex-basis:100%}
 .marcas-t td:first-child{white-space:normal;min-width:150px}
+.mk-emp{color:inherit;text-decoration:none}
+.mk-emp:hover b{text-decoration:underline}
+.mk-emp-t td:first-child{min-width:100px}
+.mk-emp-t th{white-space:normal}
+.mk-emp-t td{white-space:normal}
+.mk-emp-t .marca-cel b,.mk-emp-t .mk-add{white-space:nowrap}
+.mk-nav{display:flex;gap:6px;align-items:center;flex:1 1 280px;min-width:0}
+.mk-nav select{flex:1;min-width:0;width:auto}
+@media (max-width:1280px){.mk-emp-t .mk-res{min-width:140px;max-width:170px}}
+.mk-emp-t tr.mk-hoy td{background:#F2F7FF}
+.mk-emp-t tr.mk-fut td{opacity:.55}
+.mk-emp-tot{grid-template-columns:repeat(6,1fr)}
+@media (max-width:900px){.mk-emp-tot{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:640px){.mk-emp-tot{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:1280px){.marcas-t .mk-res{min-width:150px;max-width:190px}}
 @media (max-width:640px){.marcas-t .mk-res{max-width:none}}
 .chip.comb{background:#E7F7EE;color:#11733F}
@@ -1490,7 +1504,7 @@ async function ruta() {
     if (S.supervisor && p[0] === 'asistencia') return vAsistenciaSup(p[1]);
     if (S.supervisor && p[0] === 'empleados') return vEmpleadosSup();
     if (S.supervisor && p[0] === 'empleado') return vEmpleadoSup(p[1]);
-    if ((S.admin || S.supervisor) && p[0] === 'marcajes') return vMarcajes(p[1], p[2]);
+    if ((S.admin || S.supervisor) && p[0] === 'marcajes') return vMarcajes(p[1], p[2], p[3]);
     if ((S.admin || S.supervisor) && p[0] === 'horarios') return vHorarios(p[1]);
     if (S.yo && p[0] === 'marcar') return vMarcar();
     if (p[0] === 'pago') return vPagoExtra(p[1]);
@@ -2987,6 +3001,51 @@ async function urlsFotos(paths) {
   const ps = [...new Set(paths.filter(Boolean))]; if (!ps.length) return {};
   try { const { data } = await sb.storage.from('pl-marcajes').createSignedUrls(ps, 3600); const o = {}; (data || []).forEach(x => { if (x.signedUrl) o[x.path] = x.signedUrl; }); return o; } catch (_) { return {}; }
 }
+/* marcaje: piezas que usan la vista por día y la del empleado por quincena */
+const intTxtMk = i => i.estado === 'guardado' ? 'guardado' : i.estado === 'cancelado' ? 'cancelado por el empleado' : i.estado === 'fallo' ? `falló en ${PASOS_MK[i.paso] || 'el envío'}${i.detalle ? ': ' + esc(i.detalle) : ''}` : 'sin terminar (la app se cerró o quedó esperando)';
+// primer intento del empleado para esa marca, si fue 2 min o más antes de la hora en que quedó guardada
+const demoraMk = (r, ints) => { const i = ints.filter(x => x.empleado_id === r.empleado_id && x.fecha === r.fecha && x.tipo === r.tipo)[0]; const g = new Date(r.hora_original || r.marcado_en); return i && r.origen === 'empleado' && g - new Date(i.iniciado_en) >= 120000 ? i : null; };
+const celdaMarca = (r, urls, ints) => `<button class="marca-cel mk-${r.estado}" data-mk="${r.id}" title="${EST_MK[r.estado] || ''}">${urls[r.foto_path] ? `<img src="${urls[r.foto_path]}" alt="" loading="lazy">` : '<span class="sinfoto"></span>'}<span><b>${hora(r.marcado_en)}</b><small class="tiny">${r.hora_original ? 'editado · ' : r.origen === 'admin' ? 'manual · ' : r.origen === 'solicitud' ? 'solicitado · ' : r.auto_aprobado ? 'automático · ' : ''}${EST_MK[r.estado] || ''}</small>${r.alertas?.length ? `<small>${chipsAlerta(r.alertas)}</small>` : ''}${r.precision_m >= 100 ? `<small class="tiny" style="color:#8A6A00">GPS ±${Math.round(r.precision_m)} m</small>` : ''}${demoraMk(r, ints) ? `<small class="tiny" style="color:#B45309">1er intento ${hora(demoraMk(r, ints).iniciado_en)}</small>` : ''}</span></button>`;
+function agregarMarcajeManual(emp, nombre, fecha, tipo, recargar) {
+    const h = hoja(`Agregar ${nomMarca(tipo).toLowerCase()} · ${corto(nombre)}`, `<form style="display:grid;gap:12px"><p class="small muted" style="margin:0">${DIAS_LARGO[pf(fecha).getDay()]} ${fl(fecha)}. Para cuando el empleado olvidó marcar. Queda aprobado y marcado como manual, sin foto ni ubicación.</p>
+      <label class="f">Hora<input class="inp" type="time" name="hora" required></label><label class="f">Motivo<input class="inp" name="motivo" required placeholder="Ej.: olvidó marcar, se le descargó el teléfono"></label><div class="pie"><button class="btn pri">Agregar marcaje</button></div></form>`);
+    $('form', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target); try { await q(sb.rpc('pl_crear_marcaje', { p_emp: emp, p_fecha: fecha, p_tipo: tipo, p_hora: x.hora, p_motivo: x.motivo })); h.cerrar(); toast('Marcaje agregado'); recargar(); } catch (er) { toast(errMsg(er), true); } };
+}
+// ints: intentos de marcar del empleado (se filtran por fecha y tipo); rsDia: resumen de ese día
+function abrirMarcaje(r, { urls, nombre, ints = [], rsDia = null, recargar }) {
+    const propio = id => !S.admin && S.yo && id === S.yo.id;
+    const intTxt = intTxtMk, demora = x => demoraMk(x, ints);
+    const intsDe = (emp, tipo) => ints.filter(i => i.empleado_id === emp && i.fecha === r.fecha && i.tipo === tipo);
+    const e = { nombre };
+    const puede = !propio(r.empleado_id);
+    const hl = new Date(r.marcado_en).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Tegucigalpa' });
+    const h = hoja(`${nomMarca(r.tipo)} · ${corto(e?.nombre || '')}`, `<div class="mk-det">${urls[r.foto_path] ? `<img src="${urls[r.foto_path]}" alt="Selfie" class="mk-foto">` : '<div class="vacio mk-foto" style="display:grid;place-items:center;color:#fff">Sin foto</div>'}
+      <div class="mk-mapa" data-mapa>${r.lat == null ? '<div class="vacio" style="height:100%;display:grid;place-items:center">Sin ubicación</div>' : ''}</div></div>
+      <div class="panel small" style="margin-top:12px"><div class="cp-dato"><span>Hora</span><span><b>${fdt(r.marcado_en)}</b></span></div>
+      ${r.guardado_en && r.origen === 'empleado' && new Date(r.guardado_en) - new Date(r.hora_original || r.marcado_en) >= 120000 ? `<div class="cp-dato"><span>Terminó de guardarse</span><span>${hora(r.guardado_en)} · ${minTxt((new Date(r.guardado_en) - new Date(r.hora_original || r.marcado_en)) / 60000)} después de tocar “Marcar”</span></div>` : ''}
+      ${r.hora_original ? `<div class="cp-dato"><span>Hora original</span><span>${fdt(r.hora_original)} · ${esc(r.motivo_edicion || '')}</span></div>` : r.origen === 'admin' ? `<div class="cp-dato"><span>Manual</span><span>${esc(r.motivo_edicion || r.nota || '')}</span></div>` : ''}
+      <div class="cp-dato"><span>Estado</span><span>${EST_MK[r.estado] || ''}${r.auto_aprobado ? ' automáticamente' : ''}${r.revisado_en ? ' · ' + fdt(r.revisado_en) : ''}</span></div>
+      ${intsDe(r.empleado_id, r.tipo).length && (demora(r) || intsDe(r.empleado_id, r.tipo).length > 1) ? `<div class="cp-dato"><span>Intentos</span><span style="text-align:right">${intsDe(r.empleado_id, r.tipo).map(i => `<div><b>${hora(i.iniciado_en)}</b> <span class="tiny muted">${intTxt(i)}</span></div>`).join('')}${demora(r) && puede && !r.anulado ? `<button type="button" class="btn sm borde" data-usar-int="${new Date(demora(r).iniciado_en).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Tegucigalpa' })}" style="margin-top:6px">Usar la hora del primer intento</button>` : ''}</span></div>` : ''}
+      ${r.alertas?.length ? `<div class="cp-dato"><span>Alertas</span><span style="text-align:right">${r.alertas.map(a => `<div>${chipsAlerta([a])} <span class="tiny muted">${esc(ALERTAS_MK[a]?.[1] || '')}</span></div>`).join('')}</span></div>` : ''}
+      ${r.distancia_m != null ? `<div class="cp-dato"><span>Distancia a la zona</span><span>${N(r.distancia_m)} m${r.zona_id ? ' · dentro' : ' · fuera'}</span></div>` : ''}
+      ${r.origen === 'solicitud' ? `<div class="cp-dato"><span>Solicitud</span><span>${esc(r.motivo_edicion || '')}</span></div>` : ''}
+      ${rsDia && !rsDia.sin_horario ? `<div class="cp-dato"><span>Horario del día</span><span>${horarioTxt(rsDia)}</span></div>` : ''}
+      ${r.lat != null ? `<div class="cp-dato"><span>Ubicación</span><span>${mapsLink(r.lat, r.lng)} ${r.precision_m ? `±${Math.round(r.precision_m)} m${r.precision_m >= 100 ? ' (aproximada, sin señal de GPS)' : ''}` : ''}</span></div>` : ''}
+      ${r.nota ? `<div class="cp-dato"><span>Nota</span><span>${esc(r.nota)}</span></div>` : ''}</div>
+      ${!puede ? '<p class="small muted">Tus propios marcajes los revisa administración.</p>' : r.anulado ? '' : `
+      <div class="mk-acc">
+        ${r.estado !== 'aprobado' ? '<button class="btn pri" data-x="ok">Aprobar</button>' : ''}
+        <form data-f="edit" class="mk-edit"><label class="f">Corregir hora<input class="inp" type="time" name="hora" value="${hl}" required></label><label class="f" style="flex:1">Motivo<input class="inp" name="motivo" required placeholder="Ej.: llegó 8:10, marcó tarde"></label><button class="btn borde">Guardar hora</button></form>
+        <form data-f="rech" class="mk-edit"><label class="f" style="flex:1">Rechazar (motivo)<input class="inp" name="motivo" required placeholder="Ej.: foto no corresponde, ubicación fuera de la oficina"></label><button class="btn rojo">Rechazar</button></form>
+      </div>`}`, { ancha: true });
+    if (r.lat != null) miniMapa($('[data-mapa]', h.el), r.lat, r.lng, r.precision_m);
+    $('[data-usar-int]', h.el) && ($('[data-usar-int]', h.el).onclick = ev => { const fe = $('[data-f="edit"]', h.el); if (!fe) return; fe.hora.value = ev.currentTarget.dataset.usarInt; if (!fe.motivo.value) fe.motivo.value = 'Primer intento de marcar a esa hora; la app demoró en guardar'; fe.motivo.focus(); });
+    const fin = msg => { h.cerrar(); toast(msg); recargar(); };
+    $('[data-x="ok"]', h.el) && ($('[data-x="ok"]', h.el).onclick = async () => { try { await q(sb.rpc('pl_revisar_marcajes', { p_ids: [r.id], p_accion: 'aprobar' })); fin('Marcaje aprobado'); } catch (er) { toast(errMsg(er), true); } });
+    $('[data-f="edit"]', h.el) && ($('[data-f="edit"]', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target); try { await q(sb.rpc('pl_editar_marcaje', { p_id: r.id, p_hora: x.hora, p_motivo: x.motivo })); fin('Hora corregida y aprobada'); } catch (er) { toast(errMsg(er), true); } });
+    $('[data-f="rech"]', h.el) && ($('[data-f="rech"]', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target); try { await q(sb.rpc('pl_revisar_marcajes', { p_ids: [r.id], p_accion: 'rechazar', p_motivo: x.motivo })); fin('Marcaje rechazado; el empleado puede volver a marcar'); } catch (er) { toast(errMsg(er), true); } });
+}
+
 /* ===================== MARCAJES: revisión por día y por quincena ===================== */
 const EST_MK = { pendiente: 'Por revisar', aprobado: 'Aprobado', rechazado: 'Rechazado' };
 const quincenasSalario = () => q(sb.from('pl_periodos').select('id,nombre,estado,fecha_inicio,fecha_fin,codigo').eq('tipo', 'salario').order('fecha_inicio', { ascending: false }).limit(24));
@@ -2995,7 +3054,7 @@ const selectorQuincena = (pers, sel, id = 'selq') => `<select class="inp" id="${
 const minTxt = m => { m = Math.round(+m || 0); return m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ' ' + (m % 60) + ' min' : ''}` : `${m} min`; };
 const horarioTxt = h => !h ? '<span class="muted">Sin horario</span>' : h.libre ? '<span class="chip gris">Libre</span>' : `${horaCorta(h.entrada || h.h_entrada)} – ${horaCorta(h.salida || h.h_salida)}`;
 const tabsMarcajes = (activo, fecha, perId) => `<div class="tabs" style="margin-bottom:12px"><a href="#/marcajes/${fecha || ''}" class="${activo === 'dia' ? 'on' : ''}">Por día</a><a href="#/marcajes/q/${perId || ''}" class="${activo === 'q' ? 'on' : ''}">Por quincena</a><a href="#/horarios/${perId || ''}">Horarios</a></div>`;
-function vMarcajes(a, b) { return a === 'q' ? vMarcajesQuincena(b) : vMarcajesDia(a); }
+function vMarcajes(a, b, c) { return a === 'q' ? vMarcajesQuincena(b) : a === 'emp' ? vMarcajesEmpleado(b, c) : vMarcajesDia(a); }
 async function vMarcajesDia(fecha) {
   cargando();
   const hoy = iso(hoyHN());
@@ -3006,10 +3065,7 @@ async function vMarcajesDia(fecha) {
     q(sb.rpc('pl_marcaje_resumen', { p_desde: fecha, p_hasta: fecha })), quincenasSalario(),
     q(sb.rpc('pl_alertas_marcaje', { p_fecha: fecha })).catch(() => null)]);
   const [ints, hes] = await Promise.all([q(sb.from('pl_marcaje_intentos').select('*').eq('fecha', fecha).order('iniciado_en')).catch(() => []), cargarHeRango(fecha, fecha)]);
-  const intsDe = (emp, tipo) => ints.filter(i => i.empleado_id === emp && i.tipo === tipo);
-  // primer intento del empleado para esa marca, si fue 2 min o más antes de la hora en que quedó guardada
-  const demora = r => { const i = intsDe(r.empleado_id, r.tipo)[0]; const g = new Date(r.hora_original || r.marcado_en); return i && r.origen === 'empleado' && g - new Date(i.iniciado_en) >= 120000 ? i : null; };
-  const intTxt = i => i.estado === 'guardado' ? 'guardado' : i.estado === 'cancelado' ? 'cancelado por el empleado' : i.estado === 'fallo' ? `falló en ${PASOS_MK[i.paso] || 'el envío'}${i.detalle ? ': ' + esc(i.detalle) : ''}` : 'sin terminar (la app se cerró o quedó esperando)';
+  const intTxt = intTxtMk;
   const emps = emps0.filter(e => e.activo);
   const urls = await urlsFotos(rows.map(r => r.foto_path));
   const val = rows.filter(r => !r.anulado);
@@ -3022,7 +3078,7 @@ async function vMarcajesDia(fecha) {
   const exD = {}; res.forEach(r => exD[r.empleado_id] = estadoExtraDia(r, hes, propio(r.empleado_id)));
   const itemHe = id => { const r = rs[id]; return { empleado_id: id, fecha, nombre: emps0.find(e => e.id === id)?.nombre || '', min: +r.extra_min, pend: +r.n_pendientes }; };
   const candHe = lista.filter(e => exD[e.id]?.tipo === 'candidata');
-  const celda = (e, t, r) => r ? `<button class="marca-cel mk-${r.estado}" data-mk="${r.id}" title="${EST_MK[r.estado] || ''}">${urls[r.foto_path] ? `<img src="${urls[r.foto_path]}" alt="">` : '<span class="sinfoto"></span>'}<span><b>${hora(r.marcado_en)}</b><small class="tiny">${r.hora_original ? 'editado · ' : r.origen === 'admin' ? 'manual · ' : r.origen === 'solicitud' ? 'solicitado · ' : r.auto_aprobado ? 'automático · ' : ''}${EST_MK[r.estado] || ''}</small>${r.alertas?.length ? `<small>${chipsAlerta(r.alertas)}</small>` : ''}${r.precision_m >= 100 ? `<small class="tiny" style="color:#8A6A00">GPS ±${Math.round(r.precision_m)} m</small>` : ''}${demora(r) ? `<small class="tiny" style="color:#B45309">1er intento ${hora(demora(r).iniciado_en)}</small>` : ''}</span></button>`
+  const celda = (e, t, r) => r ? celdaMarca(r, urls, ints)
     : (propio(e.id) || fecha > hoy ? '<span class="muted">—</span>' : `<button class="btn sm borde mk-add" data-add="${e.id}|${t}" title="Agregar marcaje manual">+ Agregar</button>`);
   const result = e => { const r = rs[e.id]; if (!r) return ''; const p = [];
     if (+r.tarde_min) p.push(`<span class="chip red">Tarde ${minTxt(r.tarde_min)}</span>`);
@@ -3039,9 +3095,9 @@ async function vMarcajesDia(fecha) {
       ${alr.sin_entrada.length ? `<div class="panel"><h4>No marcaron entrada (${alr.sin_entrada.length})</h4>${alr.sin_entrada.map(a => `<div class="small">${esc(corto(a.nombre))} <span class="tiny muted">· horario ${horaCorta(a.entrada)}</span></div>`).join('')}</div>` : ''}
       ${alr.sin_salida.length ? `<div class="panel"><h4>No marcaron salida (${alr.sin_salida.length})</h4>${alr.sin_salida.map(a => `<div class="small">${esc(corto(a.nombre))}</div>`).join('')}</div>` : ''}</div>` : ''}
     ${(() => { const sg = ints.filter(i => i.estado !== 'guardado' && i.estado !== 'cancelado' && !(por[i.empleado_id] || {})[i.tipo]); return sg.length ? `<div class="mk-alertas"><div class="panel"><h4>Intentaron marcar y no se guardó (${sg.length})</h4>${sg.map(i => `<div class="small">${esc(corto(emps0.find(e => e.id === i.empleado_id)?.nombre || ''))} · ${nomMarca(i.tipo).toLowerCase()} ${hora(i.iniciado_en)} <span class="tiny muted">${intTxt(i)}</span></div>`).join('')}</div></div>` : ''; })()}
-    <div class="mk-ley"><span><i class="mk-pt pendiente"></i>Por revisar</span><span><i class="mk-pt aprobado"></i>Aprobado</span><span class="small muted">Los marcajes sin alertas se aprueban solos. Toca un marcaje para aprobar, editar la hora o rechazar.</span></div>
+    <div class="mk-ley"><span><i class="mk-pt pendiente"></i>Por revisar</span><span><i class="mk-pt aprobado"></i>Aprobado</span><span class="small muted">Los marcajes sin alertas se aprueban solos. Toca un marcaje para aprobar, editar la hora o rechazar. Toca el nombre para ver su quincena.</span></div>
     <div class="tscroll"><table class="t marcas-t"><thead><tr><th>Empleado</th><th>Entrada</th><th>Salida a almuerzo</th><th>Regreso</th><th>Salida</th><th>Resultado</th></tr></thead><tbody>
-      ${lista.map(e => { const d = por[e.id] || {}; return `<tr><td><b>${esc(e.nombre)}</b><div class="tiny muted">Horario: ${horarioTxt(rs[e.id] && !rs[e.id].sin_horario ? rs[e.id] : null)}</div></td>${TIPOS_MARCA.map(([t]) => `<td>${celda(e, t, d[t])}</td>`).join('')}<td>${result(e)}</td></tr>`; }).join('')}
+      ${lista.map(e => { const d = por[e.id] || {}; return `<tr><td><a class="mk-emp" href="#/marcajes/emp/${e.id}/${per?.id || ''}" title="Ver su quincena"><b>${esc(e.nombre)}</b></a><div class="tiny muted">Horario: ${horarioTxt(rs[e.id] && !rs[e.id].sin_horario ? rs[e.id] : null)}</div></td>${TIPOS_MARCA.map(([t]) => `<td>${celda(e, t, d[t])}</td>`).join('')}<td>${result(e)}</td></tr>`; }).join('')}
     </tbody></table></div>
     ${rows.some(r => r.anulado) ? `<p class="small muted" style="margin-top:10px">Rechazados o anulados este día: ${rows.filter(r => r.anulado).map(r => `${esc(corto(emps0.find(e => e.id === r.empleado_id)?.nombre || ''))} (${nomMarca(r.tipo).toLowerCase()} ${hora(r.marcado_en)}: ${esc(r.motivo_anulacion || '')})`).join(', ')}</p>` : ''}`);
   const recargar = () => vMarcajesDia(fecha);
@@ -3050,41 +3106,80 @@ async function vMarcajesDia(fecha) {
   $('#aprobar-dia', m) && ($('#aprobar-dia', m).onclick = async () => { if (!await confirmar('Aprobar marcajes', `Se aprueban ${pend.length} marcajes por revisar del ${fc(fecha)}.`, 'Aprobar')) return; try { const n = await q(sb.rpc('pl_revisar_marcajes', { p_ids: pend.map(r => r.id), p_accion: 'aprobar' })); toast(`${n} marcajes aprobados`); recargar(); } catch (er) { toast(errMsg(er), true); } });
   $('#he-dia', m) && ($('#he-dia', m).onclick = () => aprobarExtraMarcaje(candHe.map(e => itemHe(e.id)), recargar));
   $$('[data-he]', m).forEach(b => b.onclick = () => aprobarExtraMarcaje([itemHe(b.dataset.he)], recargar));
-  $$('[data-add]', m).forEach(b => b.onclick = () => { const [emp, tipo] = b.dataset.add.split('|'); const e = emps.find(x => x.id === emp);
-    const h = hoja(`Agregar ${nomMarca(tipo).toLowerCase()} · ${corto(e?.nombre || '')}`, `<form style="display:grid;gap:12px"><p class="small muted" style="margin:0">Para cuando el empleado olvidó marcar. Queda aprobado y marcado como manual, sin foto ni ubicación.</p>
-      <label class="f">Hora<input class="inp" type="time" name="hora" required></label><label class="f">Motivo<input class="inp" name="motivo" required placeholder="Ej.: olvidó marcar, se le descargó el teléfono"></label><div class="pie"><button class="btn pri">Agregar marcaje</button></div></form>`);
-    $('form', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target); try { await q(sb.rpc('pl_crear_marcaje', { p_emp: emp, p_fecha: fecha, p_tipo: tipo, p_hora: x.hora, p_motivo: x.motivo })); h.cerrar(); toast('Marcaje agregado'); recargar(); } catch (er) { toast(errMsg(er), true); } };
-  });
-  $$('[data-mk]', m).forEach(b => b.onclick = () => {
-    const r = rows.find(x => x.id === b.dataset.mk); const e = emps0.find(x => x.id === r.empleado_id);
-    const puede = !propio(r.empleado_id);
-    const hl = new Date(r.marcado_en).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Tegucigalpa' });
-    const h = hoja(`${nomMarca(r.tipo)} · ${corto(e?.nombre || '')}`, `<div class="mk-det">${urls[r.foto_path] ? `<img src="${urls[r.foto_path]}" alt="Selfie" class="mk-foto">` : '<div class="vacio mk-foto" style="display:grid;place-items:center;color:#fff">Sin foto</div>'}
-      <div class="mk-mapa" data-mapa>${r.lat == null ? '<div class="vacio" style="height:100%;display:grid;place-items:center">Sin ubicación</div>' : ''}</div></div>
-      <div class="panel small" style="margin-top:12px"><div class="cp-dato"><span>Hora</span><span><b>${fdt(r.marcado_en)}</b></span></div>
-      ${r.guardado_en && r.origen === 'empleado' && new Date(r.guardado_en) - new Date(r.hora_original || r.marcado_en) >= 120000 ? `<div class="cp-dato"><span>Terminó de guardarse</span><span>${hora(r.guardado_en)} · ${minTxt((new Date(r.guardado_en) - new Date(r.hora_original || r.marcado_en)) / 60000)} después de tocar “Marcar”</span></div>` : ''}
-      ${r.hora_original ? `<div class="cp-dato"><span>Hora original</span><span>${fdt(r.hora_original)} · ${esc(r.motivo_edicion || '')}</span></div>` : r.origen === 'admin' ? `<div class="cp-dato"><span>Manual</span><span>${esc(r.motivo_edicion || r.nota || '')}</span></div>` : ''}
-      <div class="cp-dato"><span>Estado</span><span>${EST_MK[r.estado] || ''}${r.auto_aprobado ? ' automáticamente' : ''}${r.revisado_en ? ' · ' + fdt(r.revisado_en) : ''}</span></div>
-      ${intsDe(r.empleado_id, r.tipo).length && (demora(r) || intsDe(r.empleado_id, r.tipo).length > 1) ? `<div class="cp-dato"><span>Intentos</span><span style="text-align:right">${intsDe(r.empleado_id, r.tipo).map(i => `<div><b>${hora(i.iniciado_en)}</b> <span class="tiny muted">${intTxt(i)}</span></div>`).join('')}${demora(r) && puede && !r.anulado ? `<button type="button" class="btn sm borde" data-usar-int="${new Date(demora(r).iniciado_en).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Tegucigalpa' })}" style="margin-top:6px">Usar la hora del primer intento</button>` : ''}</span></div>` : ''}
-      ${r.alertas?.length ? `<div class="cp-dato"><span>Alertas</span><span style="text-align:right">${r.alertas.map(a => `<div>${chipsAlerta([a])} <span class="tiny muted">${esc(ALERTAS_MK[a]?.[1] || '')}</span></div>`).join('')}</span></div>` : ''}
-      ${r.distancia_m != null ? `<div class="cp-dato"><span>Distancia a la zona</span><span>${N(r.distancia_m)} m${r.zona_id ? ' · dentro' : ' · fuera'}</span></div>` : ''}
-      ${r.origen === 'solicitud' ? `<div class="cp-dato"><span>Solicitud</span><span>${esc(r.motivo_edicion || '')}</span></div>` : ''}
-      ${rs[r.empleado_id] && !rs[r.empleado_id].sin_horario ? `<div class="cp-dato"><span>Horario del día</span><span>${horarioTxt(rs[r.empleado_id])}</span></div>` : ''}
-      ${r.lat != null ? `<div class="cp-dato"><span>Ubicación</span><span>${mapsLink(r.lat, r.lng)} ${r.precision_m ? `±${Math.round(r.precision_m)} m${r.precision_m >= 100 ? ' (aproximada, sin señal de GPS)' : ''}` : ''}</span></div>` : ''}
-      ${r.nota ? `<div class="cp-dato"><span>Nota</span><span>${esc(r.nota)}</span></div>` : ''}</div>
-      ${!puede ? '<p class="small muted">Tus propios marcajes los revisa administración.</p>' : r.anulado ? '' : `
-      <div class="mk-acc">
-        ${r.estado !== 'aprobado' ? '<button class="btn pri" data-x="ok">Aprobar</button>' : ''}
-        <form data-f="edit" class="mk-edit"><label class="f">Corregir hora<input class="inp" type="time" name="hora" value="${hl}" required></label><label class="f" style="flex:1">Motivo<input class="inp" name="motivo" required placeholder="Ej.: llegó 8:10, marcó tarde"></label><button class="btn borde">Guardar hora</button></form>
-        <form data-f="rech" class="mk-edit"><label class="f" style="flex:1">Rechazar (motivo)<input class="inp" name="motivo" required placeholder="Ej.: foto no corresponde, ubicación fuera de la oficina"></label><button class="btn rojo">Rechazar</button></form>
-      </div>`}`, { ancha: true });
-    if (r.lat != null) miniMapa($('[data-mapa]', h.el), r.lat, r.lng, r.precision_m);
-    $('[data-usar-int]', h.el) && ($('[data-usar-int]', h.el).onclick = ev => { const fe = $('[data-f="edit"]', h.el); if (!fe) return; fe.hora.value = ev.currentTarget.dataset.usarInt; if (!fe.motivo.value) fe.motivo.value = 'Primer intento de marcar a esa hora; la app demoró en guardar'; fe.motivo.focus(); });
-    const fin = msg => { h.cerrar(); toast(msg); recargar(); };
-    $('[data-x="ok"]', h.el) && ($('[data-x="ok"]', h.el).onclick = async () => { try { await q(sb.rpc('pl_revisar_marcajes', { p_ids: [r.id], p_accion: 'aprobar' })); fin('Marcaje aprobado'); } catch (er) { toast(errMsg(er), true); } });
-    $('[data-f="edit"]', h.el) && ($('[data-f="edit"]', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target); try { await q(sb.rpc('pl_editar_marcaje', { p_id: r.id, p_hora: x.hora, p_motivo: x.motivo })); fin('Hora corregida y aprobada'); } catch (er) { toast(errMsg(er), true); } });
-    $('[data-f="rech"]', h.el) && ($('[data-f="rech"]', h.el).onsubmit = async ev => { ev.preventDefault(); const x = formData(ev.target); try { await q(sb.rpc('pl_revisar_marcajes', { p_ids: [r.id], p_accion: 'rechazar', p_motivo: x.motivo })); fin('Marcaje rechazado; el empleado puede volver a marcar'); } catch (er) { toast(errMsg(er), true); } });
-  });
+  $$('[data-add]', m).forEach(b => b.onclick = () => { const [emp, tipo] = b.dataset.add.split('|'); agregarMarcajeManual(emp, emps.find(x => x.id === emp)?.nombre || '', fecha, tipo, recargar); });
+  $$('[data-mk]', m).forEach(b => b.onclick = () => { const r = rows.find(x => x.id === b.dataset.mk);
+    abrirMarcaje(r, { urls, nombre: emps0.find(x => x.id === r.empleado_id)?.nombre || '', ints: ints.filter(i => i.empleado_id === r.empleado_id), rsDia: rs[r.empleado_id], recargar }); });
+}
+// Marcajes de un empleado en toda la quincena: cada día con sus 4 marcas (foto, hora, estado, alertas), resultado e historial
+async function vMarcajesEmpleado(empId, perId) {
+  cargando();
+  const hoy = iso(hoyHN());
+  const [pers, emps0] = await Promise.all([quincenasSalario(), q(sb.rpc('pl_lista_empleados'))]);
+  if (!pers.length) return shell('<div class="vacio"><b>Sin quincenas</b>Crea una planilla de salario para ver el detalle por quincena.</div>');
+  const per = pers.find(p => p.id === perId) || quincenaDe(pers, hoy) || pers[0];
+  const emps = emps0.filter(x => x.activo || x.id === empId).sort((a, z) => a.nombre.localeCompare(z.nombre));
+  const e = emps.find(x => x.id === empId);
+  if (!e) return shell(`<div class="vacio"><b>Empleado no encontrado</b><a href="#/marcajes/q/${per.id}">Volver a la quincena</a></div>`);
+  const ir = (id, p = per.id) => location.hash = `#/marcajes/emp/${id}/${p}`;
+  const [rows, res, ints, hes, vacs, perms] = await Promise.all([
+    q(sb.from('pl_marcajes').select('*').eq('empleado_id', e.id).gte('fecha', per.fecha_inicio).lte('fecha', per.fecha_fin).order('marcado_en')),
+    q(sb.rpc('pl_marcaje_resumen', { p_desde: per.fecha_inicio, p_hasta: per.fecha_fin, p_emp: e.id })),
+    q(sb.from('pl_marcaje_intentos').select('*').eq('empleado_id', e.id).gte('fecha', per.fecha_inicio).lte('fecha', per.fecha_fin).order('iniciado_en')).catch(() => []),
+    cargarHeRango(per.fecha_inicio, per.fecha_fin).then(x => x.filter(h => h.empleado_id === e.id)),
+    q(sb.from('pl_vacaciones').select('desde,hasta,tipo').eq('empleado_id', e.id).eq('estado', 'aprobada').lte('desde', per.fecha_fin).gte('hasta', per.fecha_inicio)).catch(() => []),
+    q(sb.from('pl_permisos').select('desde,hasta,goce,horas,feriado_id').eq('empleado_id', e.id).eq('estado', 'aprobado').lte('desde', per.fecha_fin).gte('hasta', per.fecha_inicio)).catch(() => [])]);
+  const urls = await urlsFotos(rows.map(r => r.foto_path));
+  const propio = !S.admin && S.yo && e.id === S.yo.id;
+  const val = rows.filter(r => !r.anulado);
+  const porDia = {}; val.forEach(r => (porDia[r.fecha] = porDia[r.fecha] || {})[r.tipo] = r);
+  const rs = {}; res.forEach(r => { r.he = estadoExtraDia(r, hes, propio); rs[r.fecha] = r; });
+  const dias = []; for (let d = per.fecha_inicio; d <= per.fecha_fin; d = addDias(d, 1)) dias.push(d);
+  const ausencia = f => { const v = vacs.find(x => x.desde <= f && x.hasta >= f && x.tipo === 'solicitud'); if (v) return '<span class="chip gris">Vacaciones</span>';
+    const p = perms.find(x => x.desde <= f && x.hasta >= f); if (p) return `<span class="chip gris">${p.feriado_id ? 'Feriado' : p.horas ? `Permiso ${N(p.horas)} h` : p.goce ? 'Permiso con goce' : 'Permiso sin goce'}</span>`; return ''; };
+  const pend = val.filter(r => r.estado === 'pendiente' && !propio);
+  const candHe = res.filter(r => r.he?.tipo === 'candidata').map(r => ({ empleado_id: e.id, fecha: r.fecha, nombre: e.nombre, min: +r.extra_min, pend: +r.n_pendientes }));
+  const t = { conH: res.filter(d => !d.sin_horario && !d.libre).length, marc: res.filter(d => d.m_entrada).length, faltas: res.filter(d => d.falta).length,
+    tarde: res.reduce((a, d) => a + +d.tarde_min, 0), nTarde: res.filter(d => +d.tarde_min).length, extra: res.reduce((a, d) => a + +d.extra_min, 0),
+    heAp: res.reduce((a, d) => a + (d.he?.tipo === 'aprobada' ? d.he.horas : 0), 0), trab: res.reduce((a, d) => a + (+d.trabajado_min || 0), 0), pend: pend.length,
+    alertas: val.filter(r => r.alertas?.length).length, sinH: res.filter(d => d.sin_horario).length };
+  const i = emps.findIndex(x => x.id === e.id), ant = emps[i - 1], sig = emps[i + 1];
+  const celda = (f, tipo) => { const r = porDia[f]?.[tipo]; if (r) return celdaMarca(r, urls, ints);
+    // día libre sin marcas: solo se ofrece agregar la entrada (por si trabajó)
+    if (rs[f]?.libre && !porDia[f] && tipo !== 'entrada') return '<span class="muted">—</span>';
+    return propio || f > hoy ? '<span class="muted">—</span>' : `<button class="btn sm borde mk-add" data-add="${f}|${tipo}" title="Agregar marcaje manual">+ Agregar</button>`; };
+  const resultado = f => { const r = rs[f]; const p = [];
+    const au = ausencia(f); if (au) p.push(au);
+    if (r) {
+      if (r.libre) p.push('<span class="chip gris">Día libre</span>');
+      if (+r.tarde_min) p.push(`<span class="chip red">Tarde ${minTxt(r.tarde_min)}</span>`);
+      if (r.he) p.push(r.he.html + (r.he.tipo === 'candidata' ? `<button class="btn sm pri" data-he="${f}">Aprobar extra</button>` : ''));
+      if (r.falta && !au) p.push('<span class="chip red">Falta</span>');
+      if (r.trabajado_min != null) p.push(`<span class="tiny muted">${minTxt(r.trabajado_min)} trabajadas</span>`);
+    }
+    const anul = rows.filter(x => x.anulado && x.fecha === f);
+    if (anul.length) p.push(`<span class="tiny" style="color:#B42318">Rechazado: ${anul.map(x => `${nomMarca(x.tipo).toLowerCase()} ${hora(x.marcado_en)}${x.motivo_anulacion ? ' (' + esc(x.motivo_anulacion) + ')' : ''}`).join(', ')}</span>`);
+    const sg = ints.filter(x => x.fecha === f && x.estado !== 'guardado' && x.estado !== 'cancelado' && !porDia[f]?.[x.tipo]);
+    if (sg.length) p.push(`<span class="tiny" style="color:#B45309">No se guardó: ${sg.map(x => `${nomMarca(x.tipo).toLowerCase()} ${hora(x.iniciado_en)}`).join(', ')}</span>`);
+    return p.length ? `<div class="mk-res">${p.join('')}</div>` : '<span class="muted">—</span>'; };
+  const m = shell(`<div class="top"><div><a href="#/marcajes/q/${per.id}" class="small">‹ Marcajes de la quincena</a><h1 style="margin-top:4px">${esc(e.nombre)}</h1><div class="muted small">${esc(e.cargo || '')}${e.cargo ? ' · ' : ''}del ${fc(per.fecha_inicio)} al ${fc(per.fecha_fin)}${per.estado === 'cerrada' ? ' · planilla cerrada' : ''}</div></div>
+      <div class="acc"><div class="mk-nav"><button class="btn borde sm" data-ir="${ant?.id || ''}" ${ant ? '' : 'disabled'} aria-label="Empleado anterior" title="${esc(ant?.nombre || '')}">‹</button><select class="inp" id="sele">${emps.map(x => `<option value="${x.id}" ${x.id === e.id ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select><button class="btn borde sm" data-ir="${sig?.id || ''}" ${sig ? '' : 'disabled'} aria-label="Empleado siguiente" title="${esc(sig?.nombre || '')}">›</button></div>${selectorQuincena(pers, per.id)}</div></div>
+    ${tabsMarcajes('q', per.fecha_inicio <= hoy && per.fecha_fin >= hoy ? hoy : per.fecha_fin, per.id)}
+    <div class="totales mk-emp-tot"><div><div class="k">Días con horario</div><div class="v">${t.conH}</div><div class="tiny muted">marcó ${t.marc}</div></div><div><div class="k">Faltas</div><div class="v">${t.faltas}</div></div><div><div class="k">Llegadas tarde</div><div class="v">${t.nTarde}</div><div class="tiny muted">${minTxt(t.tarde)}</div></div><div><div class="k">Horas extra</div><div class="v">${N(t.extra / 60)} h</div><div class="tiny muted">${N(t.heAp)} h aprobadas</div></div><div><div class="k">Trabajado</div><div class="v">${N(t.trab / 60)} h</div></div><div class="${t.pend ? 'neto' : ''}"><div class="k">Por revisar</div><div class="v">${t.pend}</div>${t.alertas ? `<div class="tiny">${t.alertas} con alertas</div>` : ''}</div></div>
+    ${(pend.length || candHe.length) && !propio ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px">${pend.length ? `<button class="btn pri sm" id="aprobar-e">Aprobar ${pend.length} por revisar</button>` : ''}${candHe.length ? `<button class="btn ama sm" id="he-e">Aprobar horas extra (${candHe.length} día${candHe.length > 1 ? 's' : ''})</button>` : ''}</div>` : ''}
+    ${t.sinH ? `<div class="err" style="background:#FFF6CC;color:#6B5200;margin:0 0 12px">${t.sinH} días sin horario cargado: sin horario no se calculan llegadas tarde ni horas extra. <a href="#/horarios/${per.id}">Cargar horarios</a></div>` : ''}
+    <div class="mk-ley"><span><i class="mk-pt pendiente"></i>Por revisar</span><span><i class="mk-pt aprobado"></i>Aprobado</span><span class="small muted">Toca un marcaje para ver la foto y la ubicación, aprobar, corregir la hora o rechazar. Toca el día para ver a todo el equipo ese día.</span></div>
+    <div class="tscroll"><table class="t marcas-t mk-emp-t"><thead><tr><th>Día</th><th>Entrada</th><th>Salida a almuerzo</th><th>Regreso</th><th>Salida</th><th>Resultado</th></tr></thead><tbody>
+      ${dias.map(f => { const r = rs[f]; const fut = f > hoy; return `<tr class="${r?.falta && !ausencia(f) ? 'q-falta' : ''} ${f === hoy ? 'mk-hoy' : ''} ${fut ? 'mk-fut' : ''}"><td><a href="#/marcajes/${f}" class="mk-emp"><b>${DIAS_LARGO[pf(f).getDay()].slice(0, 3)} ${fc(f).slice(0, 5)}</b></a>${f === hoy ? ' <span class="chip" style="padding:0 6px">Hoy</span>' : ''}<div class="tiny muted">${!r || r.sin_horario ? 'Sin horario' : r.libre ? 'Libre' : horarioTxt(r)}</div></td>${fut ? '<td colspan="5" class="muted small">Todavía no llega</td>' : TIPOS_MARCA.map(([tp]) => `<td>${celda(f, tp)}</td>`).join('') + `<td>${resultado(f)}</td>`}</tr>`; }).join('')}
+    </tbody></table></div>`);
+  const recargar = () => vMarcajesEmpleado(e.id, per.id);
+  $('#sele', m).onchange = ev => ir(ev.target.value);
+  $('#selq', m).onchange = ev => ir(e.id, ev.target.value);
+  $$('[data-ir]', m).forEach(b => b.onclick = () => b.dataset.ir && ir(b.dataset.ir));
+  $$('[data-add]', m).forEach(b => b.onclick = () => { const [f, tipo] = b.dataset.add.split('|'); agregarMarcajeManual(e.id, e.nombre, f, tipo, recargar); });
+  $$('[data-mk]', m).forEach(b => b.onclick = () => { const r = rows.find(x => x.id === b.dataset.mk); abrirMarcaje(r, { urls, nombre: e.nombre, ints, rsDia: rs[r.fecha], recargar }); });
+  $$('[data-he]', m).forEach(b => b.onclick = () => aprobarExtraMarcaje(candHe.filter(c => c.fecha === b.dataset.he), recargar));
+  $('#he-e', m) && ($('#he-e', m).onclick = () => aprobarExtraMarcaje(candHe, recargar));
+  $('#aprobar-e', m) && ($('#aprobar-e', m).onclick = async () => { if (!await confirmar('Aprobar marcajes', `Se aprueban ${pend.length} marcajes por revisar de ${esc(e.nombre)} en ${esc(per.nombre)}.`, 'Aprobar')) return; try { const n = await q(sb.rpc('pl_revisar_marcajes', { p_ids: pend.map(r => r.id), p_accion: 'aprobar' })); toast(`${n} marcajes aprobados`); recargar(); } catch (er) { toast(errMsg(er), true); } });
 }
 async function vMarcajesQuincena(perId) {
   cargando();
@@ -3114,17 +3209,12 @@ async function vMarcajesQuincena(perId) {
     <div class="totales" style="grid-template-columns:repeat(4,1fr)"><div><div class="k">Llegadas tarde</div><div class="v">${tot('nTarde')}</div><div class="tiny muted">${minTxt(tot('tarde'))}</div></div><div><div class="k">Horas extra</div><div class="v">${N(tot('extra') / 60)} h</div></div><div><div class="k">Faltas</div><div class="v">${tot('faltas')}</div></div><div class="${tot('pend') ? 'neto' : ''}"><div class="k">Por revisar</div><div class="v">${tot('pend')}</div></div></div>
     ${tot('sinH') ? `<div class="err" style="background:#FFF6CC;color:#6B5200;margin:0 0 12px">Hay ${tot('sinH')} días sin horario cargado en esta quincena; sin horario no se calculan llegadas tarde ni horas extra. <a href="#/horarios/${per.id}">Cargar horarios</a></div>` : ''}
     <div class="tscroll"><table class="t"><thead><tr><th>Empleado</th><th class="r">Días con horario</th><th class="r">Marcó</th><th class="r">Faltas</th><th class="r">Tarde</th><th class="r">Horas extra</th><th class="r">Por revisar</th></tr></thead><tbody>
-      ${filas.map(f => `<tr class="click" data-emp="${f.id}"><td><b>${esc(f.nombre)}</b>${f.sinH ? `<div class="tiny" style="color:#8A6A00">${f.sinH} días sin horario</div>` : ''}</td><td class="r">${f.conH}</td><td class="r">${f.marc}</td><td class="r">${f.faltas ? `<span class="chip red">${f.faltas}</span>` : '—'}</td><td class="r">${f.tarde ? `<span style="color:#B42318;font-weight:600">${minTxt(f.tarde)}</span><div class="tiny muted">${f.nTarde} día${f.nTarde > 1 ? 's' : ''}</div>` : '—'}</td><td class="r">${f.extra ? `<b>${N(f.extra / 60)} h</b>${f.heAp ? `<div class="tiny" style="color:var(--verde,#0E8A5F)">${N(f.heAp)} h aprobadas</div>` : ''}${f.heCand ? `<div class="tiny" style="color:#8A6A00">${f.heCand} día${f.heCand > 1 ? 's' : ''} por aprobar</div>` : ''}` : '—'}</td><td class="r">${f.pend ? `<span class="chip warn">${f.pend}</span>` : '—'}</td></tr>
-        <tr class="q-det hidden" data-det="${f.id}"><td colspan="7"><table class="t"><thead><tr><th>Día</th><th>Horario</th><th>Entrada</th><th>Salida</th><th class="r">Tarde</th><th class="r">Extra</th><th class="r">Trabajado</th></tr></thead><tbody>
-          ${f.ds.map(d => `<tr class="click ${d.falta ? 'q-falta' : ''}" data-dia="${d.fecha}"><td>${DIAS_LARGO[pf(d.fecha).getDay()].slice(0, 3)} ${fc(d.fecha)}</td><td class="small">${d.sin_horario ? '<span class="muted">Sin horario</span>' : horarioTxt(d)}</td><td>${d.m_entrada ? horaCorta(d.m_entrada) : d.falta ? '<span class="chip red">Falta</span>' : '—'}</td><td>${d.m_salida ? horaCorta(d.m_salida) : '—'}</td><td class="r">${+d.tarde_min ? `<span style="color:#B42318">${minTxt(d.tarde_min)}</span>` : '—'}</td><td class="r">${+d.extra_min ? `${d.he?.tipo === 'aprobada' || d.he?.tipo === 'solicitud' ? d.he.html : minTxt(d.extra_min)}${d.he?.tipo === 'candidata' ? ` <button class="btn sm pri" data-he="${f.id}|${d.fecha}">Aprobar</button>` : ''}` : '—'}</td><td class="r small">${d.trabajado_min != null ? minTxt(d.trabajado_min) : '—'}${+d.n_pendientes ? ' <span class="chip warn" style="padding:0 6px">' + d.n_pendientes + '</span>' : ''}</td></tr>`).join('')}
-        </tbody></table></td></tr>`).join('')}
+      ${filas.map(f => `<tr class="click" data-emp="${f.id}"><td><b>${esc(f.nombre)}</b>${f.sinH ? `<div class="tiny" style="color:#8A6A00">${f.sinH} días sin horario</div>` : ''}</td><td class="r">${f.conH}</td><td class="r">${f.marc}</td><td class="r">${f.faltas ? `<span class="chip red">${f.faltas}</span>` : '—'}</td><td class="r">${f.tarde ? `<span style="color:#B42318;font-weight:600">${minTxt(f.tarde)}</span><div class="tiny muted">${f.nTarde} día${f.nTarde > 1 ? 's' : ''}</div>` : '—'}</td><td class="r">${f.extra ? `<b>${N(f.extra / 60)} h</b>${f.heAp ? `<div class="tiny" style="color:var(--verde,#0E8A5F)">${N(f.heAp)} h aprobadas</div>` : ''}${f.heCand ? `<div class="tiny" style="color:#8A6A00">${f.heCand} día${f.heCand > 1 ? 's' : ''} por aprobar</div>` : ''}` : '—'}</td><td class="r">${f.pend ? `<span class="chip warn">${f.pend}</span>` : '—'}</td></tr>`).join('')}
     </tbody></table></div>
-    <p class="small muted" style="margin-top:10px">Tolerancia de llegada tarde y mínimo para horas extra se configuran en Ajustes. Toca un empleado para ver cada día; toca un día para revisar sus marcajes.</p>`);
+    <p class="small muted" style="margin-top:10px">Tolerancia de llegada tarde y mínimo para horas extra se configuran en Ajustes. Toca un empleado para ver toda su quincena con cada marcaje.</p>`);
   $('#selq', m).onchange = e => location.hash = `#/marcajes/q/${e.target.value}`;
-  $$('[data-emp]', m).forEach(tr => tr.onclick = () => $(`[data-det="${tr.dataset.emp}"]`, m).classList.toggle('hidden'));
-  $$('[data-dia]', m).forEach(tr => tr.onclick = ev => { ev.stopPropagation(); location.hash = `#/marcajes/${tr.dataset.dia}`; });
+  $$('[data-emp]', m).forEach(tr => tr.onclick = () => location.hash = `#/marcajes/emp/${tr.dataset.emp}/${per.id}`);
   $('#he-q', m) && ($('#he-q', m).onclick = () => aprobarExtraMarcaje(candHe, () => vMarcajesQuincena(per.id)));
-  $$('[data-he]', m).forEach(b => b.onclick = ev => { ev.stopPropagation(); const [id, fe] = b.dataset.he.split('|'); aprobarExtraMarcaje(candHe.filter(c => c.empleado_id === id && c.fecha === fe), () => vMarcajesQuincena(per.id)); });
   $('#aprobar-q', m) && ($('#aprobar-q', m).onclick = async () => { if (!await confirmar('Aprobar marcajes', `Se aprueban ${pend.length} marcajes por revisar de ${esc(per.nombre)}. Revisa antes los que tengan dudas.`, 'Aprobar todos')) return; try { const n = await q(sb.rpc('pl_revisar_marcajes', { p_ids: pend.map(r => r.id), p_accion: 'aprobar' })); toast(`${n} marcajes aprobados`); vMarcajesQuincena(per.id); } catch (er) { toast(errMsg(er), true); } });
   $('#aplicar', m) && ($('#aplicar', m).onclick = () => {
     const h = hoja('Aplicar marcajes a la planilla', `<form style="display:grid;gap:12px"><p class="small" style="margin:0">${esc(per.nombre)}. Solo se toman los marcajes <b>aprobados</b>${tot('pend') ? ` (hay ${tot('pend')} por revisar que no se tomarán)` : ''}.</p>
@@ -4809,7 +4899,7 @@ function htmlLiquidacion(e, r, impresion = false) {
 
 /* ===================== arranque ===================== */
 // Versión de esta copia de la app. Debe coincidir con version.json; al publicar una nueva se suben las dos.
-const APP_VERSION = '71';
+const APP_VERSION = '72';
 /* Actualización automática: la app revisa version.json (archivo pequeño) al abrir, al volver a la app y cada 15 minutos.
    Si hay una versión nueva: si la persona no está escribiendo ni tiene una ventana abierta, recarga sola;
    si está en medio de algo, muestra un aviso con el botón "Actualizar". */
